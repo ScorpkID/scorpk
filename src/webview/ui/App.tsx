@@ -10,6 +10,7 @@ import { SettingsView } from './components/SettingsView';
 import { HelpView } from './components/HelpView';
 import { AccountView } from './components/AccountView';
 import { AuthGateView } from './components/AuthGateView';
+import { KeepAlive } from './components/KeepAlive';
 import { LOGO_URI } from './logo';
 
 export function App() {
@@ -60,16 +61,24 @@ export function App() {
     <div className="app-shell">
       <Sidebar active={view} onSelect={setView} logoUri={LOGO_URI} user={user} />
       <main className="app-content">
-        {view === 'agent' && (
+        <KeepAlive active={view === 'agent'}>
           <ChatView providers={providers} onGoToProviders={() => setView('providers')} username={user.name} />
-        )}
-        {view === 'team' && <TeamTab agents={agents} providers={providers} />}
-        {view === 'providers' && <ProviderManager providers={providers} />}
-        {view === 'settings' && (
+        </KeepAlive>
+        <KeepAlive active={view === 'team'}>
+          <TeamTab agents={agents} providers={providers} />
+        </KeepAlive>
+        <KeepAlive active={view === 'providers'}>
+          <ProviderManager providers={providers} />
+        </KeepAlive>
+        <KeepAlive active={view === 'settings'}>
           <SettingsView onGoToProviders={() => setView('providers')} onGoToTeam={() => setView('team')} />
-        )}
-        {view === 'help' && <HelpView />}
-        {view === 'account' && <AccountView user={user} />}
+        </KeepAlive>
+        <KeepAlive active={view === 'help'}>
+          <HelpView />
+        </KeepAlive>
+        <KeepAlive active={view === 'account'}>
+          <AccountView user={user} />
+        </KeepAlive>
       </main>
     </div>
   );
@@ -93,11 +102,12 @@ function TeamTab({ agents, providers }: { agents: AgentDefinition[]; providers: 
           Configurar agentes
         </button>
       </div>
-      {section === 'chat' ? (
+      <KeepAlive active={section === 'chat'}>
         <TeamChatView agents={agents} onGoToTeam={() => setSection('config')} />
-      ) : (
+      </KeepAlive>
+      <KeepAlive active={section === 'config'}>
         <TeamManager agents={agents} providers={providers} />
-      )}
+      </KeepAlive>
     </div>
   );
 }

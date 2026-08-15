@@ -422,6 +422,17 @@ label {
   overflow: hidden;
 }
 
+.keep-alive {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.keep-alive-hidden {
+  display: none !important;
+}
+
 .view {
   display: flex;
   flex-direction: column;

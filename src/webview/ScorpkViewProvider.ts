@@ -354,6 +354,8 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
     }
     const agents = this.teamStore.list().filter((a) => a.enabled);
     const events: TeamStreamEvent[] = [];
+    const runId = await this.teamConversationStore.saveRun(task, events);
+    this.sendTeamRuns();
     this.teamRunning = true;
     const controller = new AbortController();
     this.activeRunController = controller;
@@ -362,11 +364,15 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
         const decorated = await this.decorateTeamEvent(ev);
         events.push(decorated);
         this.postMessage({ type: 'teamEvent', event: decorated });
+        if (isTeamCheckpoint(decorated)) {
+          await this.teamConversationStore.updateRunEvents(runId, events);
+          this.sendTeamRuns();
+        }
       }
     } finally {
       this.teamRunning = false;
       this.activeRunController = null;
-      await this.teamConversationStore.saveRun(task, events);
+      await this.teamConversationStore.updateRunEvents(runId, events);
       this.sendTeamRuns();
     }
   }
@@ -392,6 +398,9 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
     try {
       for await (const ev of runDirectAgentTurn(agent, text, history, this.teamDeps(mode, controller.signal))) {
         this.postMessage({ type: 'teamEvent', event: await this.decorateTeamEvent(ev) });
+        if (isTeamCheckpoint(ev)) {
+          await this.persistAgentHistories();
+        }
       }
     } finally {
       this.teamRunning = false;
@@ -490,6 +499,7 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
     const userMsgId = randomUUID();
     this.postMessage({ type: 'chatEvent', event: { kind: 'user-message', id: userMsgId, text } });
     this.history.push({ role: 'user', content: text });
+    await this.persistActiveConversation(providerId, model);
 
     const client = createClient(provider, apiKey);
     const assistantId = randomUUID();
@@ -534,13 +544,16 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
             type: 'chatEvent',
             event: { kind: 'tool-result', callId: ev.callId, result: ev.result, isError: ev.isError },
           });
+          await this.persistActiveConversation(providerId, model);
         } else if (ev.type === 'tool-rejected') {
           this.postMessage({ type: 'chatEvent', event: { kind: 'tool-rejected', callId: ev.callId, reason: ev.reason } });
+          await this.persistActiveConversation(providerId, model);
         } else if (ev.type === 'cancelled') {
           cancelled = true;
           this.postMessage({ type: 'chatEvent', event: { kind: 'run-cancelled' } });
         } else if (ev.type === 'done') {
           this.postMessage({ type: 'chatEvent', event: { kind: 'assistant-done', id: assistantId } });
+          await this.persistActiveConversation(providerId, model);
         }
       }
 
@@ -552,11 +565,14 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
     } finally {
       this.running = false;
       this.activeRunController = null;
-      if (this.activeConversationId) {
-        await this.conversationStore.saveTurn(this.activeConversationId, providerId, model, this.history);
-        this.sendConversations();
-      }
+      await this.persistActiveConversation(providerId, model);
     }
+  }
+
+  private async persistActiveConversation(providerId: string, model: string): Promise<void> {
+    if (!this.activeConversationId) return;
+    await this.conversationStore.saveTurn(this.activeConversationId, providerId, model, this.history);
+    this.sendConversations();
   }
 
   private requestApproval(callId: string): Promise<boolean> {
@@ -594,4 +610,13 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
 </body>
 </html>`;
   }
+}
+
+function isTeamCheckpoint(ev: TeamStreamEvent): boolean {
+  return (
+    ev.kind === 'agent-text-done' ||
+    ev.kind === 'agent-tool-result' ||
+    ev.kind === 'agent-tool-rejected' ||
+    ev.kind === 'agent-done'
+  );
 }

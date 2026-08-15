@@ -53,6 +53,15 @@ export class TeamConversationStore {
     return run.id;
   }
 
+  async updateRunEvents(id: string, events: TeamStreamEvent[]): Promise<void> {
+    const runs = this.listRaw();
+    const run = runs.find((r) => r.id === id);
+    if (!run) return;
+    run.events = events;
+    run.updatedAt = Date.now();
+    await this.saveRaw(runs);
+  }
+
   async rename(id: string, title: string): Promise<void> {
     const runs = this.listRaw();
     const run = runs.find((r) => r.id === id);

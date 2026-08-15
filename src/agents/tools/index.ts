@@ -12,8 +12,11 @@ import {
 } from './fileTools';
 import { runTerminalCommandTool, runTerminalCommandHandler } from './terminalTools';
 import { gitStatusTool, gitStatusHandler, gitDiffTool, gitDiffHandler } from './gitTools';
+import { askUserTool, ASK_USER_TOOL_NAME } from './askUserTool';
 
 export type ToolHandler = (args: Record<string, unknown>) => Promise<string>;
+
+export { ASK_USER_TOOL_NAME };
 
 export const allTools: ToolDef[] = [
   readFileTool,
@@ -23,6 +26,7 @@ export const allTools: ToolDef[] = [
   runTerminalCommandTool,
   gitStatusTool,
   gitDiffTool,
+  askUserTool,
 ];
 
 export { buildToolCallDiff };

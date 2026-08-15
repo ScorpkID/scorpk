@@ -107,6 +107,7 @@ export type WebviewToExtensionMessage =
   | { type: 'testProvider'; id: string }
   | { type: 'sendMessage'; providerId: string; model: string; text: string; mode: PermissionMode }
   | { type: 'approveTool'; callId: string; approved: boolean }
+  | { type: 'answerQuestion'; callId: string; answer: string }
   | { type: 'listModels'; requestId: string; source: ModelsSource }
   | { type: 'listAgents' }
   | { type: 'addAgent'; agent: NewAgentInput }

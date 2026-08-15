@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { ChatStreamEvent, ConversationSummary, ModelsSource, PermissionMode, ProviderConfig } from '../../../shared/protocol';
 import { postToExtension, onExtensionMessage, requestAutoModeConfirmation } from '../vscodeApi';
 import { ToolCallLog, ToolBlock } from './ToolCallLog';
+import { AskUserCard } from './AskUserCard';
+
+const ASK_USER_TOOL_NAME = 'ask_user';
 import { MarkdownMessage } from './MarkdownMessage';
 import { ModeSelector } from './ModeSelector';
 import { ModelPicker } from './ModelPicker';
@@ -239,6 +242,20 @@ export function ChatView({ providers, onGoToProviders, username }: Props) {
                       {!b.done && <span className="cursor" />}
                     </div>
                   </div>
+                );
+              }
+              if (b.type === 'tool' && b.name === ASK_USER_TOOL_NAME) {
+                return (
+                  <AskUserCard
+                    key={b.callId}
+                    block={{
+                      callId: b.callId,
+                      question: String(b.args.question ?? ''),
+                      options: Array.isArray(b.args.options) ? b.args.options.map(String) : [],
+                      answered: b.status === 'done',
+                      answer: b.result,
+                    }}
+                  />
                 );
               }
               if (b.type === 'tool') {

@@ -1,6 +1,7 @@
 import { FormEvent, KeyboardEvent, RefObject, useRef } from 'react';
 import { requestFilePick } from '../vscodeApi';
-import { IconCode, IconLoader, IconPaperclip, IconSend, IconX } from './Icon';
+import { IconCode, IconPaperclip, IconSend, IconX } from './Icon';
+import { ThinkingIndicator } from './ThinkingIndicator';
 
 interface Props {
   value: string;
@@ -52,13 +53,7 @@ export function Composer({ value, onChange, onSend, onCancel, running, placehold
             <IconCode size={15} />
           </button>
           <span className="composer-hint">
-            {running ? (
-              <>
-                <IconLoader size={12} /> Trabajando...
-              </>
-            ) : (
-              'Enter para enviar · Shift+Enter nueva línea'
-            )}
+            {running ? <ThinkingIndicator /> : 'Enter para enviar · Shift+Enter nueva línea'}
           </span>
         </div>
         {running && onCancel ? (

@@ -11,6 +11,7 @@ export interface TeamRunDeps {
   tools: ToolDef[];
   toolHandlers: Record<string, ToolHandler>;
   requestApproval: (agentId: string, call: { id: string; name: string; arguments: Record<string, unknown> }) => Promise<ApprovalResult>;
+  askUser: (agentId: string, callId: string, question: string, options: string[]) => Promise<string>;
   mode: PermissionMode;
   signal?: AbortSignal;
 }
@@ -123,6 +124,7 @@ async function* runAgentTurn(
     tools: deps.tools,
     toolHandlers: deps.toolHandlers,
     requestApproval: (call) => deps.requestApproval(agent.id, call),
+    askUser: (callId, question, options) => deps.askUser(agent.id, callId, question, options),
     signal: deps.signal,
   })) {
     if (ev.type === 'text-delta') {

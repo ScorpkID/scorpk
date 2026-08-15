@@ -2,12 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 import { AgentDefinition, PermissionMode, TeamRunSummary, TeamStreamEvent } from '../../../shared/protocol';
 import { postToExtension, onExtensionMessage, requestAutoModeConfirmation } from '../vscodeApi';
 import { ToolCallLog, ToolBlock } from './ToolCallLog';
+import { AskUserCard } from './AskUserCard';
 import { MarkdownMessage } from './MarkdownMessage';
 import { ModeSelector } from './ModeSelector';
 import { HistoryPanel } from './HistoryPanel';
 import { EmptyState } from './EmptyState';
 import { Composer } from './Composer';
 import { IconClock, IconRefresh, IconUsers, IconX } from './Icon';
+
+const ASK_USER_TOOL_NAME = 'ask_user';
 
 interface Props {
   agents: AgentDefinition[];
@@ -247,6 +250,20 @@ export function TeamChatView({ agents, onGoToTeam }: Props) {
                       {!b.done && <span className="cursor" />}
                     </div>
                   </div>
+                );
+              }
+              if (b.type === 'tool' && b.name === ASK_USER_TOOL_NAME) {
+                return (
+                  <AskUserCard
+                    key={b.callId}
+                    block={{
+                      callId: b.callId,
+                      question: String(b.args.question ?? ''),
+                      options: Array.isArray(b.args.options) ? b.args.options.map(String) : [],
+                      answered: b.status === 'done',
+                      answer: b.result,
+                    }}
+                  />
                 );
               }
               if (b.type === 'tool') {

@@ -1561,3 +1561,93 @@ body.vscode-high-contrast-light .hljs-literal {
 .auth-gate-card .view-subtitle {
   margin-bottom: var(--space-2);
 }
+
+/* ============================================================
+   Thinking indicator (animado, mientras el agente trabaja)
+   ============================================================ */
+.thinking-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.thinking-word {
+  display: inline-block;
+  color: var(--scorpk-accent-strong);
+  font-weight: 500;
+  animation: thinking-word-in 0.35s ease;
+}
+
+@keyframes thinking-word-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.thinking-elapsed {
+  opacity: 0.5;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================
+   Ask user (preguntas interactivas con opciones)
+   ============================================================ */
+.ask-user-card {
+  margin: 6px var(--space-4);
+  border: 1px solid var(--border-strong);
+  border-left: 2px solid var(--scorpk-accent);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  background: color-mix(in srgb, var(--scorpk-accent) 5%, transparent);
+}
+
+.ask-user-question {
+  font-weight: 500;
+  margin-bottom: 9px;
+}
+
+.ask-user-options {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.ask-user-option {
+  justify-content: flex-start;
+  text-align: left;
+  background: var(--vscode-input-background);
+  border: 1px solid var(--border-strong);
+  padding: 7px 11px;
+}
+
+.ask-user-option:hover {
+  border-color: var(--scorpk-accent);
+  background: color-mix(in srgb, var(--scorpk-accent) 10%, var(--vscode-input-background));
+}
+
+.ask-user-other {
+  opacity: 0.7;
+  font-style: italic;
+}
+
+.ask-user-custom-row {
+  display: flex;
+  gap: 6px;
+}
+
+.ask-user-custom-row input {
+  flex: 1;
+}
+
+.ask-user-answer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #3fa66c;
+  font-weight: 500;
+}

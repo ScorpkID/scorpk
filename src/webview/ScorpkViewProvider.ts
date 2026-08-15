@@ -29,6 +29,8 @@ import { AuthService } from '../auth/authService';
 const SYSTEM_PROMPT = `Eres Scorpk, un agente de programación con acceso real al workspace del usuario en Visual Studio Code.
 Usa las herramientas disponibles (read_file, list_dir, write_file, delete_file, run_terminal_command, git_status, git_diff)
 para leer, escribir y ejecutar cosas en el proyecto cuando lo necesites, en vez de asumir contenido que no has visto.
+Si hay una decisión concreta que le corresponde al usuario (elegir entre alternativas, confirmar un enfoque cuando
+hay más de uno razonable), usa la herramienta ask_user en vez de preguntar en texto plano — no abuses de ella.
 Sé directo y conciso en tus respuestas.`;
 
 export class ScorpkViewProvider implements vscode.WebviewViewProvider {
@@ -39,6 +41,7 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
   private activeConversationId: string | null;
   private readonly teamHistories = new Map<string, ChatMessage[]>();
   private readonly pendingApprovals = new Map<string, (approved: boolean) => void>();
+  private readonly pendingAskUserAnswers = new Map<string, (answer: string) => void>();
   private running = false;
   private teamRunning = false;
   private activeRunController: AbortController | null = null;
@@ -131,6 +134,14 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
         if (resolver) {
           resolver(message.approved);
           this.pendingApprovals.delete(message.callId);
+        }
+        break;
+      }
+      case 'answerQuestion': {
+        const resolver = this.pendingAskUserAnswers.get(message.callId);
+        if (resolver) {
+          resolver(message.answer);
+          this.pendingAskUserAnswers.delete(message.callId);
         }
         break;
       }
@@ -330,6 +341,7 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
       tools: allTools,
       toolHandlers,
       requestApproval: (_agentId, call) => resolveApproval(mode, call.name, () => this.requestApproval(call.id)),
+      askUser: (_agentId, callId) => this.askUser(callId),
       mode,
       signal,
     };
@@ -494,6 +506,7 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
         tools: allTools,
         toolHandlers,
         requestApproval: (call): Promise<ApprovalResult> => resolveApproval(mode, call.name, () => this.requestApproval(call.id)),
+        askUser: (callId) => this.askUser(callId),
         signal: controller.signal,
       });
 
@@ -549,6 +562,12 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
   private requestApproval(callId: string): Promise<boolean> {
     return new Promise((resolve) => {
       this.pendingApprovals.set(callId, resolve);
+    });
+  }
+
+  private askUser(callId: string): Promise<string> {
+    return new Promise((resolve) => {
+      this.pendingAskUserAnswers.set(callId, resolve);
     });
   }
 

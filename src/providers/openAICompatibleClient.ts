@@ -27,6 +27,7 @@ export class OpenAICompatibleClient implements LLMClient {
         Authorization: `Bearer ${this.apiKey}`,
       },
       body: JSON.stringify(body),
+      signal: params.signal,
     });
 
     if (!response.ok || !response.body) {

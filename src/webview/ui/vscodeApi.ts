@@ -85,3 +85,21 @@ export function requestAutoModeConfirmation(): Promise<boolean> {
     postToExtension({ type: 'confirmAutoMode', requestId });
   });
 }
+
+interface PersistedUiState {
+  view?: string;
+}
+
+/**
+ * VS Code puede recrear el webview desde cero cuando el usuario navega a
+ * otra vista y vuelve (el estado de React se pierde). getState/setState
+ * persisten un JSON chico que VS Code sí retiene entre esas recargas, así
+ * podemos volver a la pestaña donde estaba el usuario.
+ */
+export function getPersistedView(): string | undefined {
+  return (vscodeApi.getState() as PersistedUiState | undefined)?.view;
+}
+
+export function setPersistedView(view: string): void {
+  vscodeApi.setState({ ...(vscodeApi.getState() as PersistedUiState | undefined), view });
+}

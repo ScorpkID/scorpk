@@ -12,15 +12,18 @@ export class AnthropicClient implements LLMClient {
   }
 
   async *chat(params: ChatParams): AsyncGenerator<ChatEvent, void, unknown> {
-    const stream = this.client.messages.stream({
-      model: params.model,
-      max_tokens: DEFAULT_MAX_TOKENS,
-      system: params.system,
-      messages: toAnthropicMessages(params.messages),
-      ...(params.tools && params.tools.length > 0
-        ? { tools: params.tools.map(toAnthropicTool) }
-        : {}),
-    });
+    const stream = this.client.messages.stream(
+      {
+        model: params.model,
+        max_tokens: DEFAULT_MAX_TOKENS,
+        system: params.system,
+        messages: toAnthropicMessages(params.messages),
+        ...(params.tools && params.tools.length > 0
+          ? { tools: params.tools.map(toAnthropicTool) }
+          : {}),
+      },
+      { signal: params.signal },
+    );
 
     const pendingToolUse = new Map<number, { id: string; name: string; partialJson: string }>();
 

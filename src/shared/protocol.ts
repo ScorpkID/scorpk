@@ -133,7 +133,7 @@ export type WebviewToExtensionMessage =
   | { type: 'authSignInWithOAuth'; provider: 'github' | 'google' }
   | { type: 'authSignOut' }
   | { type: 'confirmAutoMode'; requestId: string }
-  | { type: 'cancelRun' };
+  | { type: 'cancelRun'; scope: 'chat' | 'team' };
 
 export type ExtensionToWebviewMessage =
   | { type: 'providers'; providers: ProviderConfig[] }
@@ -151,4 +151,6 @@ export type ExtensionToWebviewMessage =
   | { type: 'authState'; user: AuthUser | null }
   | { type: 'authError'; message: string }
   | { type: 'authInfo'; message: string }
-  | { type: 'confirmAutoModeResult'; requestId: string; confirmed: boolean };
+  | { type: 'confirmAutoModeResult'; requestId: string; confirmed: boolean }
+  | { type: 'chatRunState'; running: boolean; assistantId?: string; partialText?: string }
+  | { type: 'teamRunState'; running: boolean };

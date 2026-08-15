@@ -10,7 +10,8 @@ import { HistoryPanel } from './HistoryPanel';
 import { ViewHeader } from './ViewHeader';
 import { EmptyState } from './EmptyState';
 import { Composer } from './Composer';
-import { IconClock, IconX } from './Icon';
+import { ThinkingIndicator } from './ThinkingIndicator';
+import { IconClock, IconPlus, IconX } from './Icon';
 import { LOGO_URI } from '../logo';
 
 const ASK_USER_TOOL_NAME = 'ask_user';
@@ -25,17 +26,23 @@ export type Block =
   | { type: 'user'; id: string; text: string }
   | { type: 'assistant'; id: string; text: string; done: boolean; startedAt: number; durationMs?: number }
   | ({ type: 'tool' } & ToolBlock)
+  | { type: 'thinking'; id: string }
   | { type: 'error'; id: string; text: string };
+
+function withoutThinking(blocks: Block[]): Block[] {
+  return blocks.filter((b) => b.type !== 'thinking');
+}
 
 export function applyChatEvent(blocks: Block[], ev: ChatStreamEvent): Block[] {
   switch (ev.kind) {
     case 'user-message':
-      return [...blocks, { type: 'user', id: ev.id, text: ev.text }];
+      return [...blocks, { type: 'user', id: ev.id, text: ev.text }, { type: 'thinking', id: cryptoId() }];
     case 'assistant-delta': {
-      const idx = blocks.findIndex((b) => b.type === 'assistant' && b.id === ev.id);
+      const base = withoutThinking(blocks);
+      const idx = base.findIndex((b) => b.type === 'assistant' && b.id === ev.id);
       if (idx === -1)
-        return [...blocks, { type: 'assistant', id: ev.id, text: ev.textDelta, done: false, startedAt: Date.now() }];
-      const copy = [...blocks];
+        return [...base, { type: 'assistant', id: ev.id, text: ev.textDelta, done: false, startedAt: Date.now() }];
+      const copy = [...base];
       const block = copy[idx] as Extract<Block, { type: 'assistant' }>;
       copy[idx] = { ...block, text: block.text + ev.textDelta };
       return copy;
@@ -50,7 +57,7 @@ export function applyChatEvent(blocks: Block[], ev: ChatStreamEvent): Block[] {
     }
     case 'tool-call':
       return [
-        ...blocks,
+        ...withoutThinking(blocks),
         {
           type: 'tool',
           callId: ev.callId,
@@ -83,11 +90,11 @@ export function applyChatEvent(blocks: Block[], ev: ChatStreamEvent): Block[] {
       return copy;
     }
     case 'run-error':
-      return [...blocks, { type: 'error', id: cryptoId(), text: ev.message }];
+      return [...withoutThinking(blocks), { type: 'error', id: cryptoId(), text: ev.message }];
     case 'run-cancelled':
-      return [...blocks, { type: 'error', id: cryptoId(), text: 'Cancelado por el usuario.' }];
+      return [...withoutThinking(blocks), { type: 'error', id: cryptoId(), text: 'Cancelado por el usuario.' }];
     case 'run-done':
-      return blocks;
+      return withoutThinking(blocks);
     default:
       return blocks;
   }
@@ -115,7 +122,7 @@ export function ChatView({ providers, onGoToProviders, username }: Props) {
   useEffect(() => {
     const unsubscribe = onExtensionMessage((message) => {
       if (message.type === 'error') {
-        setBlocks((prev) => [...prev, { type: 'error', id: cryptoId(), text: message.message }]);
+        setBlocks((prev) => [...withoutThinking(prev), { type: 'error', id: cryptoId(), text: message.message }]);
         setRunning(false);
         return;
       }
@@ -129,6 +136,20 @@ export function ChatView({ providers, onGoToProviders, username }: Props) {
         setBlocks(message.events.reduce(applyChatEvent, [] as Block[]));
         setRunning(false);
         setShowHistory(false);
+        return;
+      }
+      if (message.type === 'chatRunState') {
+        // El webview puede haberse recreado mientras había una ejecución en
+        // curso — esto reconecta la UI a lo que sigue pasando del lado del
+        // extension host, en vez de mostrarse "cortado".
+        setRunning(message.running);
+        if (message.running && message.assistantId && message.partialText) {
+          setBlocks((prev) =>
+            applyChatEvent(prev, { kind: 'assistant-delta', id: message.assistantId!, textDelta: message.partialText! }),
+          );
+        } else if (message.running) {
+          setBlocks((prev) => (prev.some((b) => b.type === 'thinking') ? prev : [...prev, { type: 'thinking', id: cryptoId() }]));
+        }
         return;
       }
       if (message.type !== 'chatEvent') return;
@@ -152,7 +173,7 @@ export function ChatView({ providers, onGoToProviders, username }: Props) {
   }
 
   function cancel() {
-    postToExtension({ type: 'cancelRun' });
+    postToExtension({ type: 'cancelRun', scope: 'chat' });
   }
 
   async function handleModeChange(next: PermissionMode) {
@@ -164,6 +185,7 @@ export function ChatView({ providers, onGoToProviders, username }: Props) {
   }
 
   function newConversation() {
+    setBlocks([]);
     postToExtension({ type: 'newConversation' });
   }
 
@@ -197,6 +219,9 @@ export function ChatView({ providers, onGoToProviders, username }: Props) {
             ))}
           </select>
           <span className="toolbar-spacer" />
+          <button className="btn-icon" onClick={newConversation} title="Nueva conversación">
+            <IconPlus size={15} />
+          </button>
           <button className="btn-icon" onClick={() => setShowHistory((v) => !v)} title="Historial de conversaciones">
             {showHistory ? <IconX size={15} /> : <IconClock size={15} />}
           </button>
@@ -237,6 +262,13 @@ export function ChatView({ providers, onGoToProviders, username }: Props) {
                   <div key={b.id} className="msg-row role-user">
                     <span className="msg-label">Vos</span>
                     <div className="msg-body">{b.text}</div>
+                  </div>
+                );
+              }
+              if (b.type === 'thinking') {
+                return (
+                  <div key={b.id} className="msg-row role-assistant thinking-row">
+                    <ThinkingIndicator />
                   </div>
                 );
               }

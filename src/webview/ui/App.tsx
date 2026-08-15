@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { AgentDefinition, AuthUser, ProviderConfig } from '../../shared/protocol';
-import { postToExtension, onExtensionMessage } from './vscodeApi';
+import { postToExtension, onExtensionMessage, getPersistedView, setPersistedView } from './vscodeApi';
 import { ProviderManager } from './components/ProviderManager';
 import { ChatView } from './components/ChatView';
 import { TeamManager } from './components/TeamManager';
@@ -13,12 +13,24 @@ import { AuthGateView } from './components/AuthGateView';
 import { KeepAlive } from './components/KeepAlive';
 import { LOGO_URI } from './logo';
 
+const VALID_VIEWS: ViewId[] = ['agent', 'team', 'providers', 'settings', 'help', 'account'];
+
+function initialView(): ViewId {
+  const saved = getPersistedView();
+  return VALID_VIEWS.includes(saved as ViewId) ? (saved as ViewId) : 'agent';
+}
+
 export function App() {
-  const [view, setView] = useState<ViewId>('agent');
+  const [view, setViewState] = useState<ViewId>(initialView);
   const [providers, setProviders] = useState<ProviderConfig[]>([]);
   const [agents, setAgents] = useState<AgentDefinition[]>([]);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
+
+  function setView(next: ViewId) {
+    setViewState(next);
+    setPersistedView(next);
+  }
 
   useEffect(() => {
     const unsubscribe = onExtensionMessage((message) => {

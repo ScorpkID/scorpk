@@ -10,6 +10,7 @@ export interface ChatParams {
   system?: string;
   messages: ChatMessage[];
   tools?: ToolDef[];
+  signal?: AbortSignal;
 }
 
 export interface LLMClient {

@@ -41,13 +41,21 @@ export async function* runAgent(opts: RunAgentOptions): AsyncGenerator<AgentEven
     let assistantText = '';
     const pendingToolCalls: ToolCall[] = [];
 
-    for await (const ev of client.chat({ model, system, messages: history, tools })) {
-      if (ev.type === 'text-delta') {
-        assistantText += ev.textDelta;
-        yield { type: 'text-delta', textDelta: ev.textDelta };
-      } else if (ev.type === 'tool-call') {
-        pendingToolCalls.push({ id: ev.id, name: ev.name, arguments: ev.arguments });
+    try {
+      for await (const ev of client.chat({ model, system, messages: history, tools, signal })) {
+        if (ev.type === 'text-delta') {
+          assistantText += ev.textDelta;
+          yield { type: 'text-delta', textDelta: ev.textDelta };
+        } else if (ev.type === 'tool-call') {
+          pendingToolCalls.push({ id: ev.id, name: ev.name, arguments: ev.arguments });
+        }
       }
+    } catch (err: any) {
+      if (signal?.aborted || err?.name === 'AbortError') {
+        yield { type: 'cancelled' };
+        return;
+      }
+      throw err;
     }
 
     history.push({

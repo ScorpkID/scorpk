@@ -8,6 +8,7 @@ import { ModeSelector } from './ModeSelector';
 import { HistoryPanel } from './HistoryPanel';
 import { EmptyState } from './EmptyState';
 import { Composer } from './Composer';
+import { ThinkingIndicator } from './ThinkingIndicator';
 import { IconClock, IconRefresh, IconUsers, IconX } from './Icon';
 
 const ASK_USER_TOOL_NAME = 'ask_user';
@@ -22,21 +23,31 @@ type Block =
   | { type: 'user'; id: string; text: string }
   | { type: 'assistant'; id: string; text: string; done: boolean; startedAt: number; durationMs?: number }
   | ({ type: 'tool' } & ToolBlock)
+  | { type: 'thinking'; id: string }
   | { type: 'error'; id: string; text: string };
 
 type Mode = 'team' | 'agent';
 
+function withoutThinking(blocks: Block[]): Block[] {
+  return blocks.filter((b) => b.type !== 'thinking');
+}
+
 export function applyTeamEvent(blocks: Block[], ev: TeamStreamEvent): Block[] {
   switch (ev.kind) {
     case 'agent-start':
-      return [...blocks, { type: 'agent-header', key: cryptoId(), agentName: ev.agentName, role: ev.role }];
+      return [
+        ...withoutThinking(blocks),
+        { type: 'agent-header', key: cryptoId(), agentName: ev.agentName, role: ev.role },
+        { type: 'thinking', id: cryptoId() },
+      ];
     case 'agent-user-message':
-      return [...blocks, { type: 'user', id: ev.id, text: ev.text }];
+      return [...withoutThinking(blocks), { type: 'user', id: ev.id, text: ev.text }, { type: 'thinking', id: cryptoId() }];
     case 'agent-text-delta': {
-      const idx = blocks.findIndex((b) => b.type === 'assistant' && b.id === ev.id);
+      const base = withoutThinking(blocks);
+      const idx = base.findIndex((b) => b.type === 'assistant' && b.id === ev.id);
       if (idx === -1)
-        return [...blocks, { type: 'assistant', id: ev.id, text: ev.textDelta, done: false, startedAt: Date.now() }];
-      const copy = [...blocks];
+        return [...base, { type: 'assistant', id: ev.id, text: ev.textDelta, done: false, startedAt: Date.now() }];
+      const copy = [...base];
       const block = copy[idx] as Extract<Block, { type: 'assistant' }>;
       copy[idx] = { ...block, text: block.text + ev.textDelta };
       return copy;
@@ -51,7 +62,7 @@ export function applyTeamEvent(blocks: Block[], ev: TeamStreamEvent): Block[] {
     }
     case 'agent-tool-call':
       return [
-        ...blocks,
+        ...withoutThinking(blocks),
         {
           type: 'tool',
           callId: ev.callId,
@@ -84,9 +95,11 @@ export function applyTeamEvent(blocks: Block[], ev: TeamStreamEvent): Block[] {
       return copy;
     }
     case 'run-error':
-      return [...blocks, { type: 'error', id: cryptoId(), text: ev.message }];
+      return [...withoutThinking(blocks), { type: 'error', id: cryptoId(), text: ev.message }];
     case 'run-cancelled':
-      return [...blocks, { type: 'error', id: cryptoId(), text: 'Cancelado por el usuario.' }];
+      return [...withoutThinking(blocks), { type: 'error', id: cryptoId(), text: 'Cancelado por el usuario.' }];
+    case 'agent-done':
+      return withoutThinking(blocks);
     default:
       return blocks;
   }
@@ -110,7 +123,7 @@ export function TeamChatView({ agents, onGoToTeam }: Props) {
   useEffect(() => {
     const unsubscribe = onExtensionMessage((message) => {
       if (message.type === 'error') {
-        setBlocks((prev) => [...prev, { type: 'error', id: cryptoId(), text: message.message }]);
+        setBlocks((prev) => [...withoutThinking(prev), { type: 'error', id: cryptoId(), text: message.message }]);
         setRunning(false);
         return;
       }
@@ -122,6 +135,15 @@ export function TeamChatView({ agents, onGoToTeam }: Props) {
         setBlocks(message.events.reduce(applyTeamEvent, [] as Block[]));
         setRunning(false);
         setShowHistory(false);
+        return;
+      }
+      if (message.type === 'teamRunState') {
+        // Igual que en Agente: si el webview se recreó mientras una tarea de
+        // equipo seguía corriendo, reconectamos el estado visual.
+        setRunning(message.running);
+        if (message.running) {
+          setBlocks((prev) => (prev.some((b) => b.type === 'thinking') ? prev : [...prev, { type: 'thinking', id: cryptoId() }]));
+        }
         return;
       }
       if (message.type !== 'teamEvent') return;
@@ -151,7 +173,7 @@ export function TeamChatView({ agents, onGoToTeam }: Props) {
   }
 
   function cancel() {
-    postToExtension({ type: 'cancelRun' });
+    postToExtension({ type: 'cancelRun', scope: 'team' });
   }
 
   async function handlePermissionModeChange(next: PermissionMode) {
@@ -238,6 +260,13 @@ export function TeamChatView({ agents, onGoToTeam }: Props) {
                   <div key={b.key} className="agent-divider">
                     <span className="agent-divider-name">{b.agentName}</span>
                     <span className="agent-divider-role">{b.role}</span>
+                  </div>
+                );
+              }
+              if (b.type === 'thinking') {
+                return (
+                  <div key={b.id} className="msg-row role-assistant thinking-row">
+                    <ThinkingIndicator />
                   </div>
                 );
               }

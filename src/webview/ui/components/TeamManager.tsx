@@ -2,7 +2,31 @@ import { FormEvent, useState } from 'react';
 import { AgentDefinition, ModelsSource, ProviderConfig } from '../../../shared/protocol';
 import { postToExtension } from '../vscodeApi';
 import { ModelPicker } from './ModelPicker';
-import { IconChevronDown, IconChevronUp, IconEdit, IconPlus, IconTrash } from './Icon';
+import { recommendedModelFor } from '../../../providers/providerPresets';
+import { IconChevronDown, IconChevronUp, IconEdit, IconPlus, IconTrash, IconCheck } from './Icon';
+
+function ModelSuggestion({
+  providers,
+  providerId,
+  currentModel,
+  onApply,
+}: {
+  providers: ProviderConfig[];
+  providerId: string;
+  currentModel: string;
+  onApply: (model: string) => void;
+}) {
+  const provider = providers.find((p) => p.id === providerId);
+  if (!provider) return null;
+  const suggestion = recommendedModelFor(provider);
+  if (!suggestion || suggestion === currentModel) return null;
+  return (
+    <button type="button" className="model-suggestion" onClick={() => onApply(suggestion)}>
+      <IconCheck size={11} />
+      Sugerencia para {provider.name}: <code>{suggestion}</code>
+    </button>
+  );
+}
 
 interface Props {
   agents: AgentDefinition[];
@@ -152,6 +176,14 @@ function AgentCard({
               placeholder="modelo"
             />
           </div>
+          {draft.providerId && (
+            <ModelSuggestion
+              providers={providers}
+              providerId={draft.providerId}
+              currentModel={draft.model}
+              onApply={(m) => setDraft({ ...draft, model: m })}
+            />
+          )}
           <div className="form-actions">
             <button type="button" className="btn-primary" onClick={save}>
               Guardar
@@ -233,6 +265,9 @@ function NewAgentForm({ providers }: { providers: ProviderConfig[] }) {
         </select>
         <ModelPicker key={providerId} value={model} onChange={setModel} source={modelsSource} placeholder="modelo" />
       </div>
+      {providerId && (
+        <ModelSuggestion providers={providers} providerId={providerId} currentModel={model} onApply={setModel} />
+      )}
       <div className="form-actions">
         <button type="submit">Agregar</button>
         <button type="button" className="btn-ghost" onClick={() => setOpen(false)}>

@@ -44,7 +44,10 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
   private readonly pendingAskUserAnswers = new Map<string, (answer: string) => void>();
   private running = false;
   private teamRunning = false;
-  private activeRunController: AbortController | null = null;
+  private activeChatRunController: AbortController | null = null;
+  private activeTeamRunController: AbortController | null = null;
+  private currentAssistantId: string | null = null;
+  private currentAssistantText = '';
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -104,6 +107,18 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
             events: historyToReplayEvents(this.history),
           });
         }
+        // El webview puede haberse recreado desde cero (VS Code lo oculta y
+        // vuelve a cargar al navegar a otra vista) mientras una ejecución
+        // seguía corriendo del lado del extension host — le avisamos al
+        // reconectar para que la UI no se vea "cortada" ni deje el input
+        // habilitado como si no hubiera nada en curso.
+        this.postMessage({
+          type: 'chatRunState',
+          running: this.running,
+          assistantId: this.currentAssistantId ?? undefined,
+          partialText: this.currentAssistantText || undefined,
+        });
+        this.postMessage({ type: 'teamRunState', running: this.teamRunning });
         break;
       case 'listProviders':
         await this.sendProviders();
@@ -263,7 +278,11 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
         break;
       }
       case 'cancelRun':
-        this.activeRunController?.abort();
+        if (message.scope === 'chat') {
+          this.activeChatRunController?.abort();
+        } else {
+          this.activeTeamRunController?.abort();
+        }
         break;
     }
   }
@@ -340,8 +359,8 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
       getAgentClient: (agent) => this.getAgentClient(agent),
       tools: allTools,
       toolHandlers,
-      requestApproval: (_agentId, call) => resolveApproval(mode, call.name, () => this.requestApproval(call.id)),
-      askUser: (_agentId, callId) => this.askUser(callId),
+      requestApproval: (_agentId, call) => resolveApproval(mode, call.name, () => this.requestApproval(call.id, signal)),
+      askUser: (_agentId, callId) => this.askUser(callId, signal),
       mode,
       signal,
     };
@@ -358,7 +377,7 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
     this.sendTeamRuns();
     this.teamRunning = true;
     const controller = new AbortController();
-    this.activeRunController = controller;
+    this.activeTeamRunController = controller;
     try {
       for await (const ev of runTeamSequential(task, agents, this.teamDeps(mode, controller.signal))) {
         const decorated = await this.decorateTeamEvent(ev);
@@ -371,7 +390,7 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
       }
     } finally {
       this.teamRunning = false;
-      this.activeRunController = null;
+      this.activeTeamRunController = null;
       await this.teamConversationStore.updateRunEvents(runId, events);
       this.sendTeamRuns();
     }
@@ -394,7 +413,7 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
 
     this.teamRunning = true;
     const controller = new AbortController();
-    this.activeRunController = controller;
+    this.activeTeamRunController = controller;
     try {
       for await (const ev of runDirectAgentTurn(agent, text, history, this.teamDeps(mode, controller.signal))) {
         this.postMessage({ type: 'teamEvent', event: await this.decorateTeamEvent(ev) });
@@ -404,7 +423,7 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
       }
     } finally {
       this.teamRunning = false;
-      this.activeRunController = null;
+      this.activeTeamRunController = null;
       await this.persistAgentHistories();
     }
   }
@@ -504,7 +523,9 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
     const client = createClient(provider, apiKey);
     const assistantId = randomUUID();
     const controller = new AbortController();
-    this.activeRunController = controller;
+    this.activeChatRunController = controller;
+    this.currentAssistantId = assistantId;
+    this.currentAssistantText = '';
     let cancelled = false;
 
     try {
@@ -515,13 +536,15 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
         history: this.history,
         tools: allTools,
         toolHandlers,
-        requestApproval: (call): Promise<ApprovalResult> => resolveApproval(mode, call.name, () => this.requestApproval(call.id)),
-        askUser: (callId) => this.askUser(callId),
+        requestApproval: (call): Promise<ApprovalResult> =>
+          resolveApproval(mode, call.name, () => this.requestApproval(call.id, controller.signal)),
+        askUser: (callId) => this.askUser(callId, controller.signal),
         signal: controller.signal,
       });
 
       for await (const ev of gen) {
         if (ev.type === 'text-delta') {
+          this.currentAssistantText += ev.textDelta;
           this.postMessage({
             type: 'chatEvent',
             event: { kind: 'assistant-delta', id: assistantId, textDelta: ev.textDelta },
@@ -564,7 +587,9 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
       this.postMessage({ type: 'chatEvent', event: { kind: 'run-error', message: err?.message ?? String(err) } });
     } finally {
       this.running = false;
-      this.activeRunController = null;
+      this.activeChatRunController = null;
+      this.currentAssistantId = null;
+      this.currentAssistantText = '';
       await this.persistActiveConversation(providerId, model);
     }
   }
@@ -575,15 +600,33 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
     this.sendConversations();
   }
 
-  private requestApproval(callId: string): Promise<boolean> {
+  private requestApproval(callId: string, signal?: AbortSignal): Promise<boolean> {
     return new Promise((resolve) => {
       this.pendingApprovals.set(callId, resolve);
+      // Si el usuario cancela la ejecución mientras hay una aprobación
+      // pendiente, no queremos dejar esa promesa (y por lo tanto el loop del
+      // agente) colgada para siempre esperando una respuesta que ya no va a
+      // llegar por la UI.
+      signal?.addEventListener(
+        'abort',
+        () => {
+          if (this.pendingApprovals.delete(callId)) resolve(false);
+        },
+        { once: true },
+      );
     });
   }
 
-  private askUser(callId: string): Promise<string> {
+  private askUser(callId: string, signal?: AbortSignal): Promise<string> {
     return new Promise((resolve) => {
       this.pendingAskUserAnswers.set(callId, resolve);
+      signal?.addEventListener(
+        'abort',
+        () => {
+          if (this.pendingAskUserAnswers.delete(callId)) resolve('(cancelado)');
+        },
+        { once: true },
+      );
     });
   }
 

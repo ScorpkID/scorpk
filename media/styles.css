@@ -1720,3 +1720,26 @@ body.vscode-high-contrast-light .hljs-literal {
   color: #3fa66c;
   font-weight: 500;
 }
+
+.model-suggestion {
+  align-self: flex-start;
+  background: transparent;
+  border: 1px dashed var(--border-strong);
+  color: var(--scorpk-accent-strong);
+  padding: 4px 9px;
+  font-size: 0.82em;
+  margin-top: -2px;
+}
+
+.model-suggestion:hover {
+  background: color-mix(in srgb, var(--scorpk-accent) 10%, transparent);
+  border-color: var(--scorpk-accent);
+}
+
+.model-suggestion code {
+  font-family: var(--vscode-editor-font-family, monospace);
+}
+
+.thinking-row {
+  opacity: 0.9;
+}

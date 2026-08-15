@@ -1,10 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChatStreamEvent, ConversationSummary, ModelsSource, PermissionMode, ProviderConfig } from '../../../shared/protocol';
 import { postToExtension, onExtensionMessage, requestAutoModeConfirmation } from '../vscodeApi';
-import { ToolCallLog, ToolBlock } from './ToolCallLog';
+import { ToolCallLog, ToolBlock, formatDuration } from './ToolCallLog';
 import { AskUserCard } from './AskUserCard';
-
-const ASK_USER_TOOL_NAME = 'ask_user';
 import { MarkdownMessage } from './MarkdownMessage';
 import { ModeSelector } from './ModeSelector';
 import { ModelPicker } from './ModelPicker';
@@ -15,6 +13,8 @@ import { Composer } from './Composer';
 import { IconClock, IconX } from './Icon';
 import { LOGO_URI } from '../logo';
 
+const ASK_USER_TOOL_NAME = 'ask_user';
+
 interface Props {
   providers: ProviderConfig[];
   onGoToProviders: () => void;
@@ -23,7 +23,7 @@ interface Props {
 
 export type Block =
   | { type: 'user'; id: string; text: string }
-  | { type: 'assistant'; id: string; text: string; done: boolean }
+  | { type: 'assistant'; id: string; text: string; done: boolean; startedAt: number; durationMs?: number }
   | ({ type: 'tool' } & ToolBlock)
   | { type: 'error'; id: string; text: string };
 
@@ -33,9 +33,10 @@ export function applyChatEvent(blocks: Block[], ev: ChatStreamEvent): Block[] {
       return [...blocks, { type: 'user', id: ev.id, text: ev.text }];
     case 'assistant-delta': {
       const idx = blocks.findIndex((b) => b.type === 'assistant' && b.id === ev.id);
-      if (idx === -1) return [...blocks, { type: 'assistant', id: ev.id, text: ev.textDelta, done: false }];
+      if (idx === -1)
+        return [...blocks, { type: 'assistant', id: ev.id, text: ev.textDelta, done: false, startedAt: Date.now() }];
       const copy = [...blocks];
-      const block = copy[idx] as { type: 'assistant'; id: string; text: string; done: boolean };
+      const block = copy[idx] as Extract<Block, { type: 'assistant' }>;
       copy[idx] = { ...block, text: block.text + ev.textDelta };
       return copy;
     }
@@ -43,8 +44,8 @@ export function applyChatEvent(blocks: Block[], ev: ChatStreamEvent): Block[] {
       const idx = blocks.findIndex((b) => b.type === 'assistant' && b.id === ev.id);
       if (idx === -1) return blocks;
       const copy = [...blocks];
-      const block = copy[idx] as { type: 'assistant'; id: string; text: string; done: boolean };
-      copy[idx] = { ...block, done: true };
+      const block = copy[idx] as Extract<Block, { type: 'assistant' }>;
+      copy[idx] = { ...block, done: true, durationMs: Date.now() - block.startedAt };
       return copy;
     }
     case 'tool-call':
@@ -57,6 +58,7 @@ export function applyChatEvent(blocks: Block[], ev: ChatStreamEvent): Block[] {
           args: ev.args,
           status: ev.needsApproval ? 'pending-approval' : 'running',
           diff: ev.diff,
+          startedAt: Date.now(),
         },
       ];
     case 'tool-result': {
@@ -64,7 +66,12 @@ export function applyChatEvent(blocks: Block[], ev: ChatStreamEvent): Block[] {
       if (idx === -1) return blocks;
       const copy = [...blocks];
       const block = copy[idx] as ToolBlock & { type: 'tool' };
-      copy[idx] = { ...block, status: ev.isError ? 'error' : 'done', result: ev.result };
+      copy[idx] = {
+        ...block,
+        status: ev.isError ? 'error' : 'done',
+        result: ev.result,
+        durationMs: block.startedAt ? Date.now() - block.startedAt : undefined,
+      };
       return copy;
     }
     case 'tool-rejected': {
@@ -236,7 +243,10 @@ export function ChatView({ providers, onGoToProviders, username }: Props) {
               if (b.type === 'assistant') {
                 return (
                   <div key={b.id} className="msg-row role-assistant">
-                    <span className="msg-label">Scorpk</span>
+                    <span className="msg-label">
+                      Scorpk
+                      {b.durationMs !== undefined && <span className="msg-duration">· {formatDuration(b.durationMs)}</span>}
+                    </span>
                     <div className="msg-body">
                       <MarkdownMessage text={b.text} />
                       {!b.done && <span className="cursor" />}

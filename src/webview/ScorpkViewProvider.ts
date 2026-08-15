@@ -401,7 +401,7 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
   }
 
   private async decorateTeamEvent(ev: TeamStreamEvent): Promise<TeamStreamEvent> {
-    if (ev.kind === 'agent-tool-call' && ev.needsApproval) {
+    if (ev.kind === 'agent-tool-call') {
       const diff = await buildToolCallDiff(ev.name, ev.args);
       if (diff) return { ...ev, diff };
     }
@@ -517,7 +517,7 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
             event: { kind: 'assistant-delta', id: assistantId, textDelta: ev.textDelta },
           });
         } else if (ev.type === 'tool-call') {
-          const diff = ev.needsApproval ? await buildToolCallDiff(ev.call.name, ev.call.arguments) : undefined;
+          const diff = await buildToolCallDiff(ev.call.name, ev.call.arguments);
           this.postMessage({
             type: 'chatEvent',
             event: {

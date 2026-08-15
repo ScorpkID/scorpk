@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { AgentDefinition, PermissionMode, TeamRunSummary, TeamStreamEvent } from '../../../shared/protocol';
 import { postToExtension, onExtensionMessage, requestAutoModeConfirmation } from '../vscodeApi';
-import { ToolCallLog, ToolBlock } from './ToolCallLog';
+import { ToolCallLog, ToolBlock, formatDuration } from './ToolCallLog';
 import { AskUserCard } from './AskUserCard';
 import { MarkdownMessage } from './MarkdownMessage';
 import { ModeSelector } from './ModeSelector';
@@ -20,7 +20,7 @@ interface Props {
 type Block =
   | { type: 'agent-header'; key: string; agentName: string; role: string }
   | { type: 'user'; id: string; text: string }
-  | { type: 'assistant'; id: string; text: string; done: boolean }
+  | { type: 'assistant'; id: string; text: string; done: boolean; startedAt: number; durationMs?: number }
   | ({ type: 'tool' } & ToolBlock)
   | { type: 'error'; id: string; text: string };
 
@@ -34,9 +34,10 @@ export function applyTeamEvent(blocks: Block[], ev: TeamStreamEvent): Block[] {
       return [...blocks, { type: 'user', id: ev.id, text: ev.text }];
     case 'agent-text-delta': {
       const idx = blocks.findIndex((b) => b.type === 'assistant' && b.id === ev.id);
-      if (idx === -1) return [...blocks, { type: 'assistant', id: ev.id, text: ev.textDelta, done: false }];
+      if (idx === -1)
+        return [...blocks, { type: 'assistant', id: ev.id, text: ev.textDelta, done: false, startedAt: Date.now() }];
       const copy = [...blocks];
-      const block = copy[idx] as { type: 'assistant'; id: string; text: string; done: boolean };
+      const block = copy[idx] as Extract<Block, { type: 'assistant' }>;
       copy[idx] = { ...block, text: block.text + ev.textDelta };
       return copy;
     }
@@ -44,8 +45,8 @@ export function applyTeamEvent(blocks: Block[], ev: TeamStreamEvent): Block[] {
       const idx = blocks.findIndex((b) => b.type === 'assistant' && b.id === ev.id);
       if (idx === -1) return blocks;
       const copy = [...blocks];
-      const block = copy[idx] as { type: 'assistant'; id: string; text: string; done: boolean };
-      copy[idx] = { ...block, done: true };
+      const block = copy[idx] as Extract<Block, { type: 'assistant' }>;
+      copy[idx] = { ...block, done: true, durationMs: Date.now() - block.startedAt };
       return copy;
     }
     case 'agent-tool-call':
@@ -58,6 +59,7 @@ export function applyTeamEvent(blocks: Block[], ev: TeamStreamEvent): Block[] {
           args: ev.args,
           status: ev.needsApproval ? 'pending-approval' : 'running',
           diff: ev.diff,
+          startedAt: Date.now(),
         },
       ];
     case 'agent-tool-result': {
@@ -65,7 +67,12 @@ export function applyTeamEvent(blocks: Block[], ev: TeamStreamEvent): Block[] {
       if (idx === -1) return blocks;
       const copy = [...blocks];
       const block = copy[idx] as ToolBlock & { type: 'tool' };
-      copy[idx] = { ...block, status: ev.isError ? 'error' : 'done', result: ev.result };
+      copy[idx] = {
+        ...block,
+        status: ev.isError ? 'error' : 'done',
+        result: ev.result,
+        durationMs: block.startedAt ? Date.now() - block.startedAt : undefined,
+      };
       return copy;
     }
     case 'agent-tool-rejected': {
@@ -245,6 +252,11 @@ export function TeamChatView({ agents, onGoToTeam }: Props) {
               if (b.type === 'assistant') {
                 return (
                   <div key={b.id} className="msg-row role-assistant">
+                    {b.durationMs !== undefined && (
+                      <span className="msg-label">
+                        <span className="msg-duration">{formatDuration(b.durationMs)}</span>
+                      </span>
+                    )}
                     <div className="msg-body">
                       <MarkdownMessage text={b.text} />
                       {!b.done && <span className="cursor" />}

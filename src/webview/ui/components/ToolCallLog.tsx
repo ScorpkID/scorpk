@@ -10,6 +10,8 @@ export interface ToolBlock {
   result?: string;
   reason?: string;
   diff?: string;
+  startedAt?: number;
+  durationMs?: number;
 }
 
 const TOOL_ICONS: Record<string, (size: number) => JSX.Element> = {
@@ -20,6 +22,16 @@ const TOOL_ICONS: Record<string, (size: number) => JSX.Element> = {
   run_terminal_command: (s) => <IconTerminal size={s} />,
   git_status: (s) => <IconGitBranch size={s} />,
   git_diff: (s) => <IconGitBranch size={s} />,
+};
+
+const TOOL_LABELS: Record<string, string> = {
+  read_file: 'Leer',
+  list_dir: 'Listar',
+  write_file: 'Escribir',
+  delete_file: 'Borrar',
+  run_terminal_command: 'Terminal',
+  git_status: 'Git status',
+  git_diff: 'Git diff',
 };
 
 const COLLAPSE_THRESHOLD = 400;
@@ -35,20 +47,33 @@ export function ToolCallLog({ block }: { block: ToolBlock }) {
   const isLong = result.length > COLLAPSE_THRESHOLD;
   const shown = isLong && !expanded ? result.slice(0, COLLAPSE_THRESHOLD) + '…' : result;
   const iconFn = TOOL_ICONS[block.name] ?? ((s: number) => <IconWrench size={s} />);
+  const label = TOOL_LABELS[block.name] ?? block.name;
+  const path = typeof block.args.path === 'string' ? block.args.path : '';
+  const isTerminal = block.name === 'run_terminal_command';
+  const command = isTerminal ? String(block.args.command ?? '') : '';
 
   return (
     <div className={`tool-call tool-call-${block.status}`}>
       <div className="tool-call-header">
         <span className="tool-call-icon">{iconFn(14)}</span>
-        <span className="tool-call-name">{block.name}</span>
-        <span className="tool-call-args">{summarizeArgs(block.args)}</span>
+        <span className="tool-call-label">{label}</span>
+        {path && <span className="tool-call-path">{path}</span>}
+        {!path && !isTerminal && <span className="tool-call-args">{summarizeArgs(block.args)}</span>}
+        <span className="toolbar-spacer" />
         {block.status === 'running' && (
           <span className="tool-call-spinner">
             <IconLoader size={13} />
           </span>
         )}
+        {block.durationMs !== undefined && (block.status === 'done' || block.status === 'error') && (
+          <span className="tool-call-duration">{formatDuration(block.durationMs)}</span>
+        )}
       </div>
-      {block.status === 'pending-approval' && block.diff && <DiffView diff={block.diff} />}
+
+      {isTerminal && command && <div className="tool-call-command">$ {command}</div>}
+
+      {block.diff && <DiffView diff={block.diff} />}
+
       {block.status === 'pending-approval' && (
         <div className="tool-call-approval">
           <span>Requiere aprobación</span>
@@ -61,7 +86,9 @@ export function ToolCallLog({ block }: { block: ToolBlock }) {
       )}
       {result && (
         <>
-          <pre className={block.status === 'error' ? 'tool-call-result-error' : 'tool-call-result'}>{shown}</pre>
+          <pre className={block.status === 'error' ? 'tool-call-result-error' : isTerminal ? 'tool-call-terminal-output' : 'tool-call-result'}>
+            {shown}
+          </pre>
           {isLong && (
             <button type="button" className="tool-call-toggle" onClick={() => setExpanded((v) => !v)}>
               {expanded ? (
@@ -126,4 +153,11 @@ function summarizeArgs(args: Record<string, unknown>): string {
 
 function truncate(s: string): string {
   return s.length > 60 ? s.slice(0, 60) + '…' : s;
+}
+
+export function formatDuration(ms: number): string {
+  const s = ms / 1000;
+  if (s < 1) return '<1s';
+  if (s < 60) return `${s.toFixed(1)}s`;
+  return `${Math.floor(s / 60)}m ${Math.round(s % 60)}s`;
 }

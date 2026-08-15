@@ -1,0 +1,99 @@
+{
+  "name": "scorpk",
+  "displayName": "Scorpk",
+  "description": "Centro de control de agentes de IA para programación dentro de VS Code. Multi-proveedor, multiagente, acceso total al editor.",
+  "version": "0.0.1",
+  "publisher": "scorpk",
+  "license": "MIT",
+  "icon": "resources/marketplace-icon.png",
+  "author": {
+    "name": "Cristian Trujillo",
+    "url": "https://github.com/cristianT71"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ScorpkID/scorpk.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ScorpkID/scorpk/issues"
+  },
+  "homepage": "https://github.com/ScorpkID/scorpk#readme",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other",
+    "Machine Learning"
+  ],
+  "keywords": [
+    "ai",
+    "agent",
+    "chat",
+    "llm",
+    "openai",
+    "anthropic",
+    "claude",
+    "multiagent",
+    "assistant"
+  ],
+  "activationEvents": [
+    "onView:scorpk.panel"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "scorpk",
+          "title": "Scorpk",
+          "icon": "resources/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "scorpk": [
+        {
+          "id": "scorpk.panel",
+          "name": "Scorpk",
+          "type": "webview"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "scorpk.openPanel",
+        "title": "Scorpk: Abrir panel"
+      },
+      {
+        "command": "scorpk.newChat",
+        "title": "Scorpk: Nueva conversación"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc --noEmit -p . && node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "package": "node esbuild.js --production",
+    "vscode:prepublish": "npm run package"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
+    "@supabase/supabase-js": "^2.45.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-markdown": "^9.0.1",
+    "remark-gfm": "^4.0.0",
+    "rehype-highlight": "^7.0.0",
+    "highlight.js": "^11.10.0",
+    "diff": "^5.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@types/vscode": "^1.85.0",
+    "@types/diff": "^5.2.1",
+    "esbuild": "^0.23.0",
+    "typescript": "^5.5.4"
+  }
+}

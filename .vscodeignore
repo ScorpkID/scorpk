@@ -1,0 +1,9 @@
+.vscode/**
+src/**
+node_modules/**
+esbuild.js
+tsconfig.json
+**/*.map
+.gitignore
+scorpk-logo.png
+ScorpkIDEA.md

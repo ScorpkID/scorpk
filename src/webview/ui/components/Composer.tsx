@@ -1,7 +1,10 @@
-import { FormEvent, KeyboardEvent, RefObject, useRef } from 'react';
+import { FormEvent, KeyboardEvent, RefObject, useRef, useState } from 'react';
+import { AttachmentRef } from '../../../shared/protocol';
 import { requestFilePick } from '../vscodeApi';
 import { IconCode, IconPaperclip, IconSend, IconX } from './Icon';
 import { ThinkingIndicator } from './ThinkingIndicator';
+import { MentionPicker, MentionPick } from './MentionPicker';
+import { AttachmentChips } from './AttachmentChips';
 
 interface Props {
   value: string;
@@ -10,21 +13,84 @@ interface Props {
   onCancel?: () => void;
   running: boolean;
   placeholder: string;
+  attachments: AttachmentRef[];
+  onAttachmentsChange: (next: AttachmentRef[]) => void;
 }
 
-export function Composer({ value, onChange, onSend, onCancel, running, placeholder }: Props) {
+export function Composer({ value, onChange, onSend, onCancel, running, placeholder, attachments, onAttachmentsChange }: Props) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [mention, setMention] = useState<{ start: number; query: string } | null>(null);
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (mention) return; // el picker maneja sus propias teclas (flechas/Enter/Escape)
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       onSend();
     }
   }
 
+  function handleChange(next: string) {
+    onChange(next);
+    const el = textareaRef.current;
+    const caret = el?.selectionStart ?? next.length;
+    const uptoCaret = next.slice(0, caret);
+    const atIndex = uptoCaret.lastIndexOf('@');
+    if (atIndex === -1) {
+      setMention(null);
+      return;
+    }
+    const between = uptoCaret.slice(atIndex + 1);
+    if (/\s/.test(between)) {
+      setMention(null);
+      return;
+    }
+    setMention({ start: atIndex, query: between });
+  }
+
+  function closeMention() {
+    setMention(null);
+    textareaRef.current?.focus();
+  }
+
+  function pickMention(pick: MentionPick) {
+    if (!mention) return;
+    const el = textareaRef.current;
+    const caret = el?.selectionStart ?? value.length;
+    const before = value.slice(0, mention.start);
+    const after = value.slice(caret);
+
+    if (pick.kind === 'selection' && pick.text) {
+      const block = `\`\`\`\n${pick.text}\n\`\`\`\n`;
+      const next = before + block + after;
+      onChange(next);
+      requestAnimationFrame(() => {
+        el?.focus();
+        const pos = (before + block).length;
+        el?.setSelectionRange(pos, pos);
+      });
+    } else {
+      const next = before + after;
+      onChange(next);
+      if (!attachments.some((a) => a.path === pick.path)) {
+        onAttachmentsChange([...attachments, { path: pick.path }]);
+      }
+      requestAnimationFrame(() => {
+        el?.focus();
+        el?.setSelectionRange(before.length, before.length);
+      });
+    }
+    setMention(null);
+  }
+
   async function attachFile() {
     const path = await requestFilePick();
-    if (path) insertAtCursor(textareaRef, onChange, value, `@${path} `);
+    if (path && !attachments.some((a) => a.path === path)) {
+      onAttachmentsChange([...attachments, { path }]);
+    }
+  }
+
+  function removeAttachment(path: string) {
+    onAttachmentsChange(attachments.filter((a) => a.path !== path));
   }
 
   function insertCodeBlock() {
@@ -35,10 +101,12 @@ export function Composer({ value, onChange, onSend, onCancel, running, placehold
 
   return (
     <div className="composer">
+      <AttachmentChips items={attachments} onRemove={removeAttachment} />
+      {mention && <MentionPicker query={mention.query} onPick={pickMention} onClose={closeMention} />}
       <textarea
         ref={textareaRef}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => handleChange(e.target.value)}
         onInput={autoResize}
         onKeyDown={onKeyDown}
         placeholder={placeholder}
@@ -53,7 +121,7 @@ export function Composer({ value, onChange, onSend, onCancel, running, placehold
             <IconCode size={15} />
           </button>
           <span className="composer-hint">
-            {running ? <ThinkingIndicator /> : 'Enter para enviar · Shift+Enter nueva línea'}
+            {running ? <ThinkingIndicator /> : 'Enter para enviar · Shift+Enter nueva línea · @ para adjuntar'}
           </span>
         </div>
         {running && onCancel ? (

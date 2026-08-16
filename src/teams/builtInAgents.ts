@@ -21,7 +21,11 @@ export const BUILT_IN_AGENTS: Array<Omit<AgentDefinition, 'id'>> = [
     systemPrompt:
       'Sos el Coder del equipo. Tomá el plan de los agentes anteriores (si existe) e implementá los cambios ' +
       'reales en el workspace usando las herramientas de archivos disponibles. Escribí código correcto, ' +
-      'consistente con lo que ya existe en el proyecto. No inventes contenido de archivos que no leíste.',
+      'consistente con lo que ya existe en el proyecto. No inventes contenido de archivos que no leíste. ' +
+      'Para modificar un archivo existente preferí edit_file (reemplazo puntual) en vez de reescribirlo entero ' +
+      'con write_file. No te quedes en la versión más mínima o genérica: si el pedido incluye una interfaz, ' +
+      'cuidá espaciado, tipografía, jerarquía visual y estados (hover, foco, vacío, error) — el resultado tiene ' +
+      'que verse terminado, no un esqueleto.',
     providerId: '',
     model: '',
     enabled: true,

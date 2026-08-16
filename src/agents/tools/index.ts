@@ -6,9 +6,14 @@ import {
   listDirHandler,
   writeFileTool,
   writeFileHandler,
+  editFileTool,
+  editFileHandler,
   deleteFileTool,
   deleteFileHandler,
   buildToolCallDiff,
+  computeFileChange,
+  FileChange,
+  setLiveEditorPreviewEnabled,
 } from './fileTools';
 import { runTerminalCommandTool, runTerminalCommandHandler } from './terminalTools';
 import { gitStatusTool, gitStatusHandler, gitDiffTool, gitDiffHandler } from './gitTools';
@@ -22,6 +27,7 @@ export const allTools: ToolDef[] = [
   readFileTool,
   listDirTool,
   writeFileTool,
+  editFileTool,
   deleteFileTool,
   runTerminalCommandTool,
   gitStatusTool,
@@ -29,12 +35,13 @@ export const allTools: ToolDef[] = [
   askUserTool,
 ];
 
-export { buildToolCallDiff };
+export { buildToolCallDiff, computeFileChange, FileChange, setLiveEditorPreviewEnabled };
 
 export const toolHandlers: Record<string, ToolHandler> = {
   read_file: readFileHandler,
   list_dir: listDirHandler,
   write_file: writeFileHandler,
+  edit_file: editFileHandler,
   delete_file: deleteFileHandler,
   run_terminal_command: runTerminalCommandHandler,
   git_status: gitStatusHandler,

@@ -1,4 +1,10 @@
-import { WebviewToExtensionMessage, ExtensionToWebviewMessage, ModelsSource, ModelInfo } from '../../shared/protocol';
+import {
+  WebviewToExtensionMessage,
+  ExtensionToWebviewMessage,
+  ModelsSource,
+  ModelInfo,
+  ActiveSelectionInfo,
+} from '../../shared/protocol';
 
 interface VsCodeApi {
   postMessage(message: unknown): void;
@@ -83,6 +89,48 @@ export function requestAutoModeConfirmation(): Promise<boolean> {
   return new Promise((resolve) => {
     pendingAutoModeRequests.set(requestId, resolve);
     postToExtension({ type: 'confirmAutoMode', requestId });
+  });
+}
+
+let workspaceFilesRequestSeq = 0;
+const pendingWorkspaceFilesRequests = new Map<string, (paths: string[]) => void>();
+
+onExtensionMessage((message) => {
+  if (message.type === 'searchWorkspaceFilesResult') {
+    const resolver = pendingWorkspaceFilesRequests.get(message.requestId);
+    if (resolver) {
+      resolver(message.paths);
+      pendingWorkspaceFilesRequests.delete(message.requestId);
+    }
+  }
+});
+
+export function requestWorkspaceFiles(query: string): Promise<string[]> {
+  const requestId = `wsfiles_${++workspaceFilesRequestSeq}_${Date.now()}`;
+  return new Promise((resolve) => {
+    pendingWorkspaceFilesRequests.set(requestId, resolve);
+    postToExtension({ type: 'searchWorkspaceFiles', requestId, query });
+  });
+}
+
+let activeSelectionRequestSeq = 0;
+const pendingActiveSelectionRequests = new Map<string, (selection: ActiveSelectionInfo | null) => void>();
+
+onExtensionMessage((message) => {
+  if (message.type === 'activeSelectionResult') {
+    const resolver = pendingActiveSelectionRequests.get(message.requestId);
+    if (resolver) {
+      resolver(message.selection);
+      pendingActiveSelectionRequests.delete(message.requestId);
+    }
+  }
+});
+
+export function requestActiveSelection(): Promise<ActiveSelectionInfo | null> {
+  const requestId = `sel_${++activeSelectionRequestSeq}_${Date.now()}`;
+  return new Promise((resolve) => {
+    pendingActiveSelectionRequests.set(requestId, resolve);
+    postToExtension({ type: 'getActiveSelection', requestId });
   });
 }
 

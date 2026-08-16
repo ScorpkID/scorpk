@@ -5,6 +5,9 @@ import { ConversationStore } from './conversations/conversationStore';
 import { TeamConversationStore } from './teams/teamConversationStore';
 import { AuthService } from './auth/authService';
 import { HuggingFaceAuthService } from './auth/huggingFaceAuthService';
+import { CheckpointStore } from './checkpoints/checkpointStore';
+import { SettingsStore } from './settings/settingsStore';
+import { McpServerStore } from './mcp/mcpServerStore';
 import { ScorpkViewProvider } from './webview/ScorpkViewProvider';
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -14,6 +17,9 @@ export function activate(context: vscode.ExtensionContext): void {
   const teamConversationStore = new TeamConversationStore(context);
   const authService = new AuthService(context);
   const hfAuthService = new HuggingFaceAuthService(context);
+  const checkpointStore = new CheckpointStore(context);
+  const settingsStore = new SettingsStore(context);
+  const mcpServerStore = new McpServerStore(context);
   const viewProvider = new ScorpkViewProvider(
     context.extensionUri,
     providerStore,
@@ -22,9 +28,13 @@ export function activate(context: vscode.ExtensionContext): void {
     teamConversationStore,
     authService,
     hfAuthService,
+    checkpointStore,
+    settingsStore,
+    mcpServerStore,
   );
 
   context.subscriptions.push(
+    { dispose: () => viewProvider.dispose() },
     vscode.window.registerWebviewViewProvider(ScorpkViewProvider.viewType, viewProvider),
     vscode.commands.registerCommand('scorpk.openPanel', () => {
       vscode.commands.executeCommand('workbench.view.extension.scorpk');

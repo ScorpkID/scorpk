@@ -42,6 +42,15 @@ export function HelpView() {
         </section>
 
         <section className="settings-section">
+          <div className="section-heading">Instrucciones del proyecto</div>
+          <p className="muted">
+            Creá un archivo <code>SCORPK.md</code> en la raíz de tu proyecto con convenciones de código, cosas que no
+            tocar, cómo correr los tests, etc. — Scorpk lo lee solo y se lo suma automáticamente a todos los agentes,
+            sin que tengas que repetirlo en cada chat.
+          </p>
+        </section>
+
+        <section className="settings-section">
           <div className="section-heading">Proveedores</div>
           <p className="muted">
             Elegí un proveedor predefinido y pegá tu API key, o usá OmniRoute como puerta única a todos los

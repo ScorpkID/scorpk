@@ -2,12 +2,20 @@ import { randomUUID } from 'crypto';
 import { ChatMessage } from './types';
 import { ChatStreamEvent } from '../shared/protocol';
 
+/** Id estable de un mensaje de usuario, en base a su posición en el historial
+ * (no cambia entre recargas — lo usan los checkpoints para saber a qué
+ * mensaje volver). */
+export function userMessageId(historyIndex: number): string {
+  return `msg_${historyIndex}`;
+}
+
 export function historyToReplayEvents(history: ChatMessage[]): ChatStreamEvent[] {
   const events: ChatStreamEvent[] = [];
 
-  for (const message of history) {
+  for (let i = 0; i < history.length; i++) {
+    const message = history[i];
     if (message.role === 'user') {
-      events.push({ kind: 'user-message', id: randomUUID(), text: message.content });
+      events.push({ kind: 'user-message', id: userMessageId(i), text: message.content });
     } else if (message.role === 'assistant') {
       const id = randomUUID();
       if (message.content) {

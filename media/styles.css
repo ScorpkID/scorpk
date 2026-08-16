@@ -665,6 +665,20 @@ label {
   font-variant-numeric: tabular-nums;
 }
 
+.msg-revert {
+  opacity: 0;
+  padding: 1px;
+  transition: opacity 0.12s ease;
+}
+
+.msg-row:hover .msg-revert {
+  opacity: 0.6;
+}
+
+.msg-revert:hover {
+  opacity: 1 !important;
+}
+
 .role-assistant .msg-label {
   color: var(--scorpk-accent-strong);
   opacity: 0.95;
@@ -916,12 +930,85 @@ label {
    Composer
    ============================================================ */
 .composer {
+  position: relative;
   margin: var(--space-2) var(--space-4) var(--space-4);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
   background: var(--vscode-input-background);
   flex-shrink: 0;
   transition: border-color 0.12s ease;
+}
+
+.mention-picker {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 100%;
+  margin-bottom: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+  background: var(--vscode-dropdown-background, var(--vscode-editor-background));
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  z-index: 20;
+  padding: 4px;
+}
+
+.mention-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  font-size: 0.88em;
+}
+
+.mention-item-active {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
+}
+
+.mention-item-meta {
+  opacity: 0.6;
+  font-size: 0.9em;
+  margin-left: 4px;
+}
+
+.mention-empty {
+  padding: 8px;
+  opacity: 0.6;
+  font-size: 0.85em;
+}
+
+.attachment-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 10px 0;
+}
+
+.attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.78em;
+  padding: 3px 6px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--scorpk-accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--scorpk-accent) 25%, transparent);
+}
+
+.attachment-chip button {
+  display: inline-flex;
+  opacity: 0.6;
+  padding: 0;
+}
+
+.attachment-chip button:hover {
+  opacity: 1;
 }
 
 .composer:focus-within {
@@ -1329,6 +1416,46 @@ label {
   padding: var(--space-3);
 }
 
+.mcp-manager {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: 8px;
+}
+
+.mcp-item {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 8px 10px;
+}
+
+.mcp-item-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.mcp-item-name {
+  font-weight: 600;
+  font-size: 0.92em;
+}
+
+.mcp-item-meta {
+  font-size: 0.78em;
+  opacity: 0.6;
+  font-family: var(--vscode-editor-font-family, monospace);
+}
+
+.mcp-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3);
+}
+
 /* ============================================================
    Static views (Ajustes / Ayuda)
    ============================================================ */
@@ -1349,6 +1476,19 @@ label {
   gap: 6px;
   margin-top: 8px;
   flex-wrap: wrap;
+}
+
+.settings-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 0.92em;
+  cursor: pointer;
+}
+
+.settings-toggle input {
+  width: auto;
 }
 
 .help-list {

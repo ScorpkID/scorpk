@@ -90,6 +90,27 @@ export interface TeamRunSummary {
   updatedAt: number;
 }
 
+export interface AttachmentRef {
+  path: string;
+}
+
+export interface McpServerConfig {
+  id: string;
+  name: string;
+  command: string;
+  args: string[];
+  enabled: boolean;
+}
+
+export type NewMcpServerInput = Omit<McpServerConfig, 'id'>;
+
+export interface ActiveSelectionInfo {
+  path: string;
+  text: string;
+  startLine: number;
+  endLine: number;
+}
+
 export interface AuthUser {
   id: string;
   email: string | null;
@@ -105,7 +126,7 @@ export type WebviewToExtensionMessage =
   | { type: 'updateProvider'; provider: ProviderConfig; apiKey?: string }
   | { type: 'removeProvider'; id: string }
   | { type: 'testProvider'; id: string }
-  | { type: 'sendMessage'; providerId: string; model: string; text: string; mode: PermissionMode }
+  | { type: 'sendMessage'; providerId: string; model: string; text: string; mode: PermissionMode; attachments?: AttachmentRef[] }
   | { type: 'approveTool'; callId: string; approved: boolean }
   | { type: 'answerQuestion'; callId: string; answer: string }
   | { type: 'listModels'; requestId: string; source: ModelsSource }
@@ -114,8 +135,8 @@ export type WebviewToExtensionMessage =
   | { type: 'updateAgent'; agent: AgentDefinition }
   | { type: 'removeAgent'; id: string }
   | { type: 'reorderAgents'; orderedIds: string[] }
-  | { type: 'runTeam'; task: string; mode: PermissionMode }
-  | { type: 'sendToAgent'; agentId: string; text: string; mode: PermissionMode }
+  | { type: 'runTeam'; task: string; mode: PermissionMode; attachments?: AttachmentRef[] }
+  | { type: 'sendToAgent'; agentId: string; text: string; mode: PermissionMode; attachments?: AttachmentRef[] }
   | { type: 'resetAgentMemory'; agentId: string }
   | { type: 'listConversations' }
   | { type: 'openConversation'; id: string }
@@ -138,7 +159,16 @@ export type WebviewToExtensionMessage =
   | { type: 'hfSignOut' }
   | { type: 'connectHuggingFace' }
   | { type: 'detectCopilot' }
-  | { type: 'openExternalUrl'; url: string };
+  | { type: 'openExternalUrl'; url: string }
+  | { type: 'revertToCheckpoint'; conversationId: string; messageId: string }
+  | { type: 'setLiveEditorPreview'; enabled: boolean }
+  | { type: 'searchWorkspaceFiles'; requestId: string; query: string }
+  | { type: 'getActiveSelection'; requestId: string }
+  | { type: 'listMcpServers' }
+  | { type: 'addMcpServer'; server: NewMcpServerInput }
+  | { type: 'updateMcpServer'; server: McpServerConfig }
+  | { type: 'removeMcpServer'; id: string }
+  | { type: 'detectMcpTools'; id: string };
 
 export type ExtensionToWebviewMessage =
   | { type: 'providers'; providers: ProviderConfig[] }
@@ -160,4 +190,9 @@ export type ExtensionToWebviewMessage =
   | { type: 'chatRunState'; running: boolean; assistantId?: string; partialText?: string }
   | { type: 'teamRunState'; running: boolean }
   | { type: 'hfAuthState'; user: AuthUser | null }
-  | { type: 'copilotDetectResult'; ok: boolean; message: string };
+  | { type: 'copilotDetectResult'; ok: boolean; message: string }
+  | { type: 'settingsState'; liveEditorPreview: boolean }
+  | { type: 'searchWorkspaceFilesResult'; requestId: string; paths: string[] }
+  | { type: 'activeSelectionResult'; requestId: string; selection: ActiveSelectionInfo | null }
+  | { type: 'mcpServers'; servers: McpServerConfig[] }
+  | { type: 'mcpDetectResult'; id: string; ok: boolean; message: string; toolNames: string[] };

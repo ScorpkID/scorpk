@@ -13,12 +13,14 @@ import {
   PermissionMode,
   TeamStreamEvent,
   AuthUser,
+  AttachmentRef,
 } from '../shared/protocol';
 import { ChatMessage } from '../agents/types';
-import { allTools, toolHandlers, buildToolCallDiff } from '../agents/tools';
+import { allTools, toolHandlers, computeFileChange, FileChange, setLiveEditorPreviewEnabled } from '../agents/tools';
 import { runAgent, ApprovalResult } from '../agents/agentRuntime';
 import { resolveApproval, permissionModeSystemSuffix } from '../agents/permissionMode';
-import { historyToReplayEvents } from '../agents/historyReplay';
+import { historyToReplayEvents, userMessageId } from '../agents/historyReplay';
+import { readProjectInstructions, withProjectInstructions } from '../agents/projectInstructions';
 import { listOpenAICompatibleModels, listAnthropicModels, listVscodeCopilotModels } from '../providers/modelLister';
 import { TeamStore } from '../teams/teamStore';
 import { runTeamSequential, runDirectAgentTurn, TeamRunDeps } from '../teams/teamRuntime';
@@ -26,12 +28,26 @@ import { ConversationStore } from '../conversations/conversationStore';
 import { TeamConversationStore } from '../teams/teamConversationStore';
 import { AuthService } from '../auth/authService';
 import { HuggingFaceAuthService } from '../auth/huggingFaceAuthService';
+import { CheckpointStore } from '../checkpoints/checkpointStore';
+import { SettingsStore } from '../settings/settingsStore';
+import { McpServerStore } from '../mcp/mcpServerStore';
+import { McpClientManager } from '../mcp/mcpClientManager';
 
 const SYSTEM_PROMPT = `Eres Scorpk, un agente de programación con acceso real al workspace del usuario en Visual Studio Code.
-Usa las herramientas disponibles (read_file, list_dir, write_file, delete_file, run_terminal_command, git_status, git_diff)
-para leer, escribir y ejecutar cosas en el proyecto cuando lo necesites, en vez de asumir contenido que no has visto.
+Usa las herramientas disponibles (read_file, list_dir, write_file, edit_file, delete_file, run_terminal_command,
+git_status, git_diff) para leer, escribir y ejecutar cosas en el proyecto cuando lo necesites, en vez de asumir
+contenido que no has visto.
+Para modificar un archivo que ya existe, preferí siempre edit_file (reemplazo puntual de una porción) en vez de
+reescribirlo entero con write_file — reservá write_file para archivos nuevos o cuando el pedido es realmente una
+reescritura completa. Si old_string no matchea de forma única, agregá más líneas de contexto y reintentá en vez
+de rendirte o reescribir todo el archivo como atajo.
 Si hay una decisión concreta que le corresponde al usuario (elegir entre alternativas, confirmar un enfoque cuando
 hay más de uno razonable), usa la herramienta ask_user en vez de preguntar en texto plano — no abuses de ella.
+No te quedes en la versión más mínima o genérica de lo que se te pide. Cuando generes una interfaz o cualquier
+resultado visual, pensá el espaciado, la tipografía, la jerarquía visual y los estados (hover, foco, vacío, error)
+como parte del pedido, no como un extra — el resultado tiene que verse cuidado y terminado, no un esqueleto.
+Preferí una implementación completa y bien pensada por sobre la más corta posible, salvo que el usuario pida
+explícitamente algo mínimo.
 Sé directo y conciso en tus respuestas.`;
 
 // Únicas URLs que el webview puede pedirle a la extensión abrir en el navegador
@@ -53,6 +69,11 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
   private activeTeamRunController: AbortController | null = null;
   private currentAssistantId: string | null = null;
   private currentAssistantText = '';
+  private readonly pendingFileChanges = new Map<string, FileChange>();
+  private workspaceFilesCache: { list: string[]; expiresAt: number } | null = null;
+  private activeTeamRunId: string | null = null;
+  private activeTeamRunEvents: TeamStreamEvent[] = [];
+  private readonly mcpClientManager: McpClientManager;
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -62,7 +83,12 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
     private readonly teamConversationStore: TeamConversationStore,
     private readonly authService: AuthService,
     private readonly hfAuthService: HuggingFaceAuthService,
+    private readonly checkpointStore: CheckpointStore,
+    private readonly settingsStore: SettingsStore,
+    private readonly mcpServerStore: McpServerStore,
   ) {
+    this.mcpClientManager = new McpClientManager(mcpServerStore);
+    setLiveEditorPreviewEnabled(this.settingsStore.getLiveEditorPreview());
     this.activeConversationId = this.conversationStore.getActiveId();
     if (this.activeConversationId) {
       this.history = this.conversationStore.getHistory(this.activeConversationId) ?? [];
@@ -90,6 +116,10 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
     });
   }
 
+  public dispose(): void {
+    this.mcpClientManager.disconnectAll();
+  }
+
   public newChat(): void {
     this.activeConversationId = null;
     this.history = [];
@@ -107,12 +137,21 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
         this.sendTeamRuns();
         await this.sendAuthState();
         await this.sendHfAuthState();
+        this.postMessage({ type: 'settingsState', liveEditorPreview: this.settingsStore.getLiveEditorPreview() });
         if (this.activeConversationId) {
           this.postMessage({
             type: 'conversationLoaded',
             id: this.activeConversationId,
             events: historyToReplayEvents(this.history),
           });
+        }
+        if (this.activeTeamRunId) {
+          // Mismo espíritu que conversationLoaded arriba, pero para el chat
+          // de equipo: antes esto no existía y por eso una corrida en curso
+          // (o recién terminada) desaparecía por completo al reconectar el
+          // webview, aunque siguiera corriendo o ya hubiera terminado del
+          // lado del extension host.
+          this.postMessage({ type: 'teamRunLoaded', id: this.activeTeamRunId, events: this.activeTeamRunEvents });
         }
         // El webview puede haberse recreado desde cero (VS Code lo oculta y
         // vuelve a cargar al navegar a otra vista) mientras una ejecución
@@ -149,7 +188,7 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
         await this.testProvider(message.id);
         break;
       case 'sendMessage':
-        await this.runChat(message.providerId, message.model, message.text, message.mode);
+        await this.runChat(message.providerId, message.model, message.text, message.mode, message.attachments);
         break;
       case 'approveTool': {
         const resolver = this.pendingApprovals.get(message.callId);
@@ -192,10 +231,10 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
         this.sendAgents();
         break;
       case 'runTeam':
-        await this.runTeam(message.task, message.mode);
+        await this.runTeam(message.task, message.mode, message.attachments);
         break;
       case 'sendToAgent':
-        await this.sendToAgent(message.agentId, message.text, message.mode);
+        await this.sendToAgent(message.agentId, message.text, message.mode, message.attachments);
         break;
       case 'resetAgentMemory':
         this.teamHistories.set(message.agentId, []);
@@ -314,6 +353,39 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
         if (ALLOWED_EXTERNAL_URLS.has(message.url)) {
           await vscode.env.openExternal(vscode.Uri.parse(message.url));
         }
+        break;
+      case 'revertToCheckpoint':
+        await this.revertToCheckpoint(message.conversationId, message.messageId);
+        break;
+      case 'setLiveEditorPreview':
+        await this.settingsStore.setLiveEditorPreview(message.enabled);
+        setLiveEditorPreviewEnabled(message.enabled);
+        break;
+      case 'searchWorkspaceFiles':
+        await this.searchWorkspaceFiles(message.requestId, message.query);
+        break;
+      case 'getActiveSelection':
+        this.sendActiveSelection(message.requestId);
+        break;
+      case 'listMcpServers':
+        this.sendMcpServers();
+        break;
+      case 'addMcpServer':
+        await this.mcpServerStore.add(message.server);
+        this.sendMcpServers();
+        break;
+      case 'updateMcpServer':
+        this.mcpClientManager.disconnect(message.server.id);
+        await this.mcpServerStore.update(message.server);
+        this.sendMcpServers();
+        break;
+      case 'removeMcpServer':
+        this.mcpClientManager.disconnect(message.id);
+        await this.mcpServerStore.remove(message.id);
+        this.sendMcpServers();
+        break;
+      case 'detectMcpTools':
+        await this.detectMcpTools(message.id);
         break;
     }
   }
@@ -443,32 +515,45 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
     return { client: createClient(provider, apiKey), model: agent.model };
   }
 
-  private teamDeps(mode: PermissionMode, signal: AbortSignal): TeamRunDeps {
+  private async teamDeps(mode: PermissionMode, signal: AbortSignal): Promise<TeamRunDeps> {
+    const mcp = await this.mcpClientManager.getTools();
     return {
       getAgentClient: (agent) => this.getAgentClient(agent),
-      tools: allTools,
-      toolHandlers,
+      tools: [...allTools, ...mcp.toolDefs],
+      toolHandlers: { ...toolHandlers, ...mcp.handlers },
       requestApproval: (_agentId, call) => resolveApproval(mode, call.name, () => this.requestApproval(call.id, signal)),
       askUser: (_agentId, callId) => this.askUser(callId, signal),
       mode,
       signal,
+      projectInstructions: await readProjectInstructions(),
     };
   }
 
-  private async runTeam(task: string, mode: PermissionMode): Promise<void> {
+  private async runTeam(task: string, mode: PermissionMode, attachments?: AttachmentRef[]): Promise<void> {
     if (this.teamRunning) {
       this.postMessage({ type: 'error', message: 'Ya hay una tarea de equipo en curso.' });
       return;
     }
+    if (attachments && attachments.length > 0) {
+      const composed = await this.composeWithAttachments(task, attachments);
+      if (composed === undefined) {
+        this.postMessage({ type: 'error', message: 'El contenido adjunto supera el límite de 60 KB — sacá algún archivo.' });
+        return;
+      }
+      task = composed;
+    }
     const agents = this.teamStore.list().filter((a) => a.enabled);
     const events: TeamStreamEvent[] = [];
     const runId = await this.teamConversationStore.saveRun(task, events);
+    this.activeTeamRunId = runId;
+    this.activeTeamRunEvents = events;
     this.sendTeamRuns();
     this.teamRunning = true;
     const controller = new AbortController();
     this.activeTeamRunController = controller;
     try {
-      for await (const ev of runTeamSequential(task, agents, this.teamDeps(mode, controller.signal))) {
+      const deps = await this.teamDeps(mode, controller.signal);
+      for await (const ev of runTeamSequential(task, agents, deps)) {
         const decorated = await this.decorateTeamEvent(ev);
         events.push(decorated);
         this.postMessage({ type: 'teamEvent', event: decorated });
@@ -485,7 +570,7 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  private async sendToAgent(agentId: string, text: string, mode: PermissionMode): Promise<void> {
+  private async sendToAgent(agentId: string, text: string, mode: PermissionMode, attachments?: AttachmentRef[]): Promise<void> {
     if (this.teamRunning) {
       this.postMessage({ type: 'error', message: 'Ya hay una tarea de equipo en curso.' });
       return;
@@ -495,6 +580,14 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
       this.postMessage({ type: 'error', message: 'Agente no encontrado.' });
       return;
     }
+    if (attachments && attachments.length > 0) {
+      const composed = await this.composeWithAttachments(text, attachments);
+      if (composed === undefined) {
+        this.postMessage({ type: 'error', message: 'El contenido adjunto supera el límite de 60 KB — sacá algún archivo.' });
+        return;
+      }
+      text = composed;
+    }
     if (!this.teamHistories.has(agentId)) {
       this.teamHistories.set(agentId, []);
     }
@@ -503,9 +596,15 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
     this.teamRunning = true;
     const controller = new AbortController();
     this.activeTeamRunController = controller;
+    this.activeTeamRunId = `direct_${agentId}`;
+    const runEvents: TeamStreamEvent[] = [];
+    this.activeTeamRunEvents = runEvents;
     try {
-      for await (const ev of runDirectAgentTurn(agent, text, history, this.teamDeps(mode, controller.signal))) {
-        this.postMessage({ type: 'teamEvent', event: await this.decorateTeamEvent(ev) });
+      const deps = await this.teamDeps(mode, controller.signal);
+      for await (const ev of runDirectAgentTurn(agent, text, history, deps)) {
+        const decorated = await this.decorateTeamEvent(ev);
+        runEvents.push(decorated);
+        this.postMessage({ type: 'teamEvent', event: decorated });
         if (isTeamCheckpoint(ev)) {
           await this.persistAgentHistories();
         }
@@ -519,8 +618,16 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
 
   private async decorateTeamEvent(ev: TeamStreamEvent): Promise<TeamStreamEvent> {
     if (ev.kind === 'agent-tool-call') {
-      const diff = await buildToolCallDiff(ev.name, ev.args);
-      if (diff) return { ...ev, diff };
+      const change = await computeFileChange(ev.name, ev.args);
+      if (change) {
+        this.pendingFileChanges.set(ev.callId, change);
+        return { ...ev, diff: change.diff };
+      }
+    } else if (ev.kind === 'agent-tool-result' || ev.kind === 'agent-tool-rejected') {
+      // La vista en vivo ahora pasa dentro del propio handler de write_file/
+      // edit_file (así se ve exactamente igual desde chat, equipo o un
+      // revert) — acá solo queda limpiar el pendiente.
+      this.pendingFileChanges.delete(ev.callId);
     }
     return ev;
   }
@@ -586,7 +693,13 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  private async runChat(providerId: string, model: string, text: string, mode: PermissionMode): Promise<void> {
+  private async runChat(
+    providerId: string,
+    model: string,
+    text: string,
+    mode: PermissionMode,
+    attachments?: AttachmentRef[],
+  ): Promise<void> {
     if (this.running) {
       this.postMessage({ type: 'error', message: 'Ya hay un mensaje en curso.' });
       return;
@@ -602,6 +715,16 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
       return;
     }
 
+    let composedText = text;
+    if (attachments && attachments.length > 0) {
+      const composed = await this.composeWithAttachments(text, attachments);
+      if (composed === undefined) {
+        this.postMessage({ type: 'error', message: 'El contenido adjunto supera el límite de 60 KB — sacá algún archivo.' });
+        return;
+      }
+      composedText = composed;
+    }
+
     if (!this.activeConversationId) {
       this.activeConversationId = await this.conversationStore.create(providerId, model);
       this.history = [];
@@ -609,9 +732,9 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
     }
 
     this.running = true;
-    const userMsgId = randomUUID();
+    const userMsgId = userMessageId(this.history.length);
     this.postMessage({ type: 'chatEvent', event: { kind: 'user-message', id: userMsgId, text } });
-    this.history.push({ role: 'user', content: text });
+    this.history.push({ role: 'user', content: composedText });
     await this.persistActiveConversation(providerId, model);
 
     const client = createClient(provider, apiKey);
@@ -623,13 +746,15 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
     let cancelled = false;
 
     try {
+      const projectInstructions = await readProjectInstructions();
+      const mcp = await this.mcpClientManager.getTools();
       const gen = runAgent({
         client,
         model,
-        system: SYSTEM_PROMPT + permissionModeSystemSuffix(mode),
+        system: withProjectInstructions(SYSTEM_PROMPT, projectInstructions) + permissionModeSystemSuffix(mode),
         history: this.history,
-        tools: allTools,
-        toolHandlers,
+        tools: [...allTools, ...mcp.toolDefs],
+        toolHandlers: { ...toolHandlers, ...mcp.handlers },
         requestApproval: (call): Promise<ApprovalResult> =>
           resolveApproval(mode, call.name, () => this.requestApproval(call.id, controller.signal)),
         askUser: (callId) => this.askUser(callId, controller.signal),
@@ -644,7 +769,8 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
             event: { kind: 'assistant-delta', id: assistantId, textDelta: ev.textDelta },
           });
         } else if (ev.type === 'tool-call') {
-          const diff = await buildToolCallDiff(ev.call.name, ev.call.arguments);
+          const change = await computeFileChange(ev.call.name, ev.call.arguments);
+          if (change) this.pendingFileChanges.set(ev.call.id, change);
           this.postMessage({
             type: 'chatEvent',
             event: {
@@ -653,7 +779,7 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
               name: ev.call.name,
               args: ev.call.arguments,
               needsApproval: ev.needsApproval,
-              diff,
+              diff: change?.diff,
             },
           });
         } else if (ev.type === 'tool-result') {
@@ -661,8 +787,10 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
             type: 'chatEvent',
             event: { kind: 'tool-result', callId: ev.callId, result: ev.result, isError: ev.isError },
           });
+          await this.applyFileChangeSideEffects(ev.callId, ev.isError, this.activeConversationId!, userMsgId);
           await this.persistActiveConversation(providerId, model);
         } else if (ev.type === 'tool-rejected') {
+          this.pendingFileChanges.delete(ev.callId);
           this.postMessage({ type: 'chatEvent', event: { kind: 'tool-rejected', callId: ev.callId, reason: ev.reason } });
           await this.persistActiveConversation(providerId, model);
         } else if (ev.type === 'cancelled') {
@@ -688,10 +816,148 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  /** Antepone el contenido de cada adjunto al texto del usuario, como bloque
+   * delimitado — undefined si el total supera el límite (el llamador debe
+   * avisarle al usuario en vez de truncar en silencio). */
+  private async composeWithAttachments(text: string, attachments: AttachmentRef[]): Promise<string | undefined> {
+    const MAX_BYTES = 60000;
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    const blocks: string[] = [];
+    let totalBytes = 0;
+    for (const att of attachments) {
+      let content = '';
+      if (folder) {
+        try {
+          const uri = vscode.Uri.joinPath(folder.uri, att.path);
+          const bytes = await vscode.workspace.fs.readFile(uri);
+          content = Buffer.from(bytes).toString('utf8');
+        } catch {
+          content = '(no se pudo leer este archivo)';
+        }
+      }
+      totalBytes += content.length;
+      if (totalBytes > MAX_BYTES) return undefined;
+      blocks.push(`[Adjunto: ${att.path}]\n\`\`\`\n${content}\n\`\`\``);
+    }
+    return blocks.join('\n\n') + '\n\n' + text;
+  }
+
+  private async searchWorkspaceFiles(requestId: string, query: string): Promise<void> {
+    if (!this.workspaceFilesCache || Date.now() > this.workspaceFilesCache.expiresAt) {
+      const uris = await vscode.workspace.findFiles('**/*', '**/{node_modules,.git,dist,out,.next,build}/**', 2000);
+      const list = uris.map((u) => vscode.workspace.asRelativePath(u, false));
+      this.workspaceFilesCache = { list, expiresAt: Date.now() + 30000 };
+    }
+    const q = query.trim().toLowerCase();
+    const filtered = q ? this.workspaceFilesCache.list.filter((p) => p.toLowerCase().includes(q)) : this.workspaceFilesCache.list;
+    this.postMessage({ type: 'searchWorkspaceFilesResult', requestId, paths: filtered.slice(0, 30) });
+  }
+
+  private sendActiveSelection(requestId: string): void {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor || editor.selection.isEmpty) {
+      this.postMessage({ type: 'activeSelectionResult', requestId, selection: null });
+      return;
+    }
+    const text = editor.document.getText(editor.selection);
+    const path = vscode.workspace.asRelativePath(editor.document.uri, false);
+    this.postMessage({
+      type: 'activeSelectionResult',
+      requestId,
+      selection: { path, text, startLine: editor.selection.start.line + 1, endLine: editor.selection.end.line + 1 },
+    });
+  }
+
+  private sendMcpServers(): void {
+    this.postMessage({ type: 'mcpServers', servers: this.mcpServerStore.list() });
+  }
+
+  private async detectMcpTools(id: string): Promise<void> {
+    const server = this.mcpServerStore.get(id);
+    if (!server) {
+      this.postMessage({ type: 'mcpDetectResult', id, ok: false, message: 'Servidor no encontrado.', toolNames: [] });
+      return;
+    }
+    try {
+      const tools = await this.mcpClientManager.detectTools(server);
+      this.postMessage({
+        type: 'mcpDetectResult',
+        id,
+        ok: true,
+        message: `Se encontraron ${tools.length} herramienta(s).`,
+        toolNames: tools.map((t) => t.mcpName),
+      });
+    } catch (err: any) {
+      this.postMessage({ type: 'mcpDetectResult', id, ok: false, message: err?.message ?? String(err), toolNames: [] });
+    }
+  }
+
   private async persistActiveConversation(providerId: string, model: string): Promise<void> {
     if (!this.activeConversationId) return;
     await this.conversationStore.saveTurn(this.activeConversationId, providerId, model, this.history);
     this.sendConversations();
+  }
+
+  /** Después de que un write_file/edit_file/delete_file se ejecuta con éxito:
+   * guarda el checkpoint, si todavía no había uno para ese archivo en este
+   * mensaje. La vista en vivo ya pasó dentro del propio handler. */
+  private async applyFileChangeSideEffects(
+    callId: string,
+    isError: boolean,
+    conversationId: string,
+    userMsgId: string,
+  ): Promise<void> {
+    const change = this.pendingFileChanges.get(callId);
+    this.pendingFileChanges.delete(callId);
+    if (!change || isError) return;
+
+    await this.checkpointStore.captureIfAbsent(
+      conversationId,
+      userMsgId,
+      change.path,
+      change.existedBefore ? change.before : null,
+    );
+  }
+
+  private async revertToCheckpoint(conversationId: string, messageId: string): Promise<void> {
+    const files = this.checkpointStore.getCheckpoint(conversationId, messageId);
+    if (!files || Object.keys(files).length === 0) {
+      this.postMessage({ type: 'error', message: 'Ese mensaje no tocó ningún archivo — no hay nada para revertir.' });
+      return;
+    }
+
+    const confirmed = await vscode.window.showWarningMessage(
+      `Esto va a devolver ${Object.keys(files).length} archivo(s) a como estaban antes de ese mensaje, y va a borrar ` +
+        'los mensajes posteriores de esta conversación. ¿Confirmás?',
+      { modal: true },
+      'Revertir',
+    );
+    if (confirmed !== 'Revertir') return;
+
+    for (const [relPath, before] of Object.entries(files)) {
+      try {
+        if (before === null) {
+          await toolHandlers.delete_file({ path: relPath });
+        } else {
+          await toolHandlers.write_file({ path: relPath, content: before });
+        }
+      } catch (err: any) {
+        this.postMessage({ type: 'error', message: `No se pudo revertir ${relPath}: ${err?.message ?? err}` });
+      }
+    }
+
+    if (conversationId === this.activeConversationId) {
+      const match = /^msg_(\d+)$/.exec(messageId);
+      const cutIndex = match ? Number(match[1]) : undefined;
+      if (cutIndex !== undefined) {
+        this.history = this.history.slice(0, cutIndex);
+        const summary = this.conversationStore.list().find((c) => c.id === conversationId);
+        if (summary) {
+          await this.persistActiveConversation(summary.providerId, summary.model);
+        }
+        this.postMessage({ type: 'conversationLoaded', id: conversationId, events: historyToReplayEvents(this.history) });
+      }
+    }
   }
 
   private requestApproval(callId: string, signal?: AbortSignal): Promise<boolean> {

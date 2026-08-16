@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ChatStreamEvent, ConversationSummary, ModelsSource, PermissionMode, ProviderConfig } from '../../../shared/protocol';
+import { AttachmentRef, ChatStreamEvent, ConversationSummary, ModelsSource, PermissionMode, ProviderConfig } from '../../../shared/protocol';
 import { postToExtension, onExtensionMessage, requestAutoModeConfirmation } from '../vscodeApi';
 import { ToolCallLog, ToolBlock, formatDuration } from './ToolCallLog';
 import { AskUserCard } from './AskUserCard';
@@ -11,7 +11,7 @@ import { ViewHeader } from './ViewHeader';
 import { EmptyState } from './EmptyState';
 import { Composer } from './Composer';
 import { ThinkingIndicator } from './ThinkingIndicator';
-import { IconClock, IconPlus, IconX } from './Icon';
+import { IconClock, IconPlus, IconRefresh, IconX } from './Icon';
 import { LOGO_URI } from '../logo';
 
 const ASK_USER_TOOL_NAME = 'ask_user';
@@ -105,6 +105,7 @@ export function ChatView({ providers, onGoToProviders, username }: Props) {
   const [model, setModel] = useState<string>('');
   const [mode, setMode] = useState<PermissionMode>('manual');
   const [input, setInput] = useState('');
+  const [attachments, setAttachments] = useState<AttachmentRef[]>([]);
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [running, setRunning] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -118,6 +119,18 @@ export function ChatView({ providers, onGoToProviders, username }: Props) {
       setModel(providers[0].defaultModel ?? '');
     }
   }, [providers, providerId]);
+
+  // Red de seguridad para cuando el webview se recrea (VS Code lo hace al
+  // salir del panel de Scorpk y volver): si nos enteramos de que hay una
+  // conversación activa pero todavía no tenemos sus mensajes cargados, la
+  // pedimos explícitamente en vez de depender solo del push automático del
+  // handshake 'ready' — así el chat no queda "vacío" aunque ese push se
+  // haya perdido o llegado en un orden raro.
+  useEffect(() => {
+    if (activeId && blocks.length === 0) {
+      postToExtension({ type: 'openConversation', id: activeId });
+    }
+  }, [activeId]);
 
   useEffect(() => {
     const unsubscribe = onExtensionMessage((message) => {
@@ -169,11 +182,29 @@ export function ChatView({ providers, onGoToProviders, username }: Props) {
     if (!text || !providerId || running) return;
     setRunning(true);
     setInput('');
-    postToExtension({ type: 'sendMessage', providerId, model: model.trim(), text, mode });
+    const currentAttachments = attachments;
+    setAttachments([]);
+    postToExtension({
+      type: 'sendMessage',
+      providerId,
+      model: model.trim(),
+      text,
+      mode,
+      attachments: currentAttachments.length > 0 ? currentAttachments : undefined,
+    });
   }
 
   function cancel() {
     postToExtension({ type: 'cancelRun', scope: 'chat' });
+  }
+
+  function toggleHistory() {
+    const next = !showHistory;
+    setShowHistory(next);
+    // Siempre refrescamos al abrir, en vez de confiar en que la lista que
+    // llegó por push en algún momento anterior siga al día — evita que una
+    // conversación en curso "no aparezca" si ese push se perdió.
+    if (next) postToExtension({ type: 'listConversations' });
   }
 
   async function handleModeChange(next: PermissionMode) {
@@ -222,7 +253,7 @@ export function ChatView({ providers, onGoToProviders, username }: Props) {
           <button className="btn-icon" onClick={newConversation} title="Nueva conversación">
             <IconPlus size={15} />
           </button>
-          <button className="btn-icon" onClick={() => setShowHistory((v) => !v)} title="Historial de conversaciones">
+          <button className="btn-icon" onClick={toggleHistory} title="Historial de conversaciones">
             {showHistory ? <IconX size={15} /> : <IconClock size={15} />}
           </button>
         </div>
@@ -260,7 +291,19 @@ export function ChatView({ providers, onGoToProviders, username }: Props) {
               if (b.type === 'user') {
                 return (
                   <div key={b.id} className="msg-row role-user">
-                    <span className="msg-label">Vos</span>
+                    <span className="msg-label">
+                      Vos
+                      {activeId && (
+                        <button
+                          type="button"
+                          className="btn-icon msg-revert"
+                          title="Revertir archivos a como estaban antes de este mensaje"
+                          onClick={() => postToExtension({ type: 'revertToCheckpoint', conversationId: activeId, messageId: b.id })}
+                        >
+                          <IconRefresh size={12} />
+                        </button>
+                      )}
+                    </span>
                     <div className="msg-body">{b.text}</div>
                   </div>
                 );
@@ -320,6 +363,8 @@ export function ChatView({ providers, onGoToProviders, username }: Props) {
             onCancel={cancel}
             running={running}
             placeholder="Escribí un mensaje para Scorpk..."
+            attachments={attachments}
+            onAttachmentsChange={setAttachments}
           />
         </>
       )}

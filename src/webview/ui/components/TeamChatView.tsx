@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { AgentDefinition, PermissionMode, TeamRunSummary, TeamStreamEvent } from '../../../shared/protocol';
+import { AgentDefinition, AttachmentRef, PermissionMode, TeamRunSummary, TeamStreamEvent } from '../../../shared/protocol';
 import { postToExtension, onExtensionMessage, requestAutoModeConfirmation } from '../vscodeApi';
 import { ToolCallLog, ToolBlock, formatDuration } from './ToolCallLog';
 import { AskUserCard } from './AskUserCard';
@@ -34,6 +34,14 @@ function withoutThinking(blocks: Block[]): Block[] {
 
 export function applyTeamEvent(blocks: Block[], ev: TeamStreamEvent): Block[] {
   switch (ev.kind) {
+    case 'run-start':
+      // En modo "todo el equipo" (pipeline) esta es la única vez que se ve
+      // la tarea que escribió el usuario — a diferencia del modo "agente
+      // específico", acá no hay un evento agent-user-message aparte.
+      if (ev.mode === 'pipeline') {
+        return [...withoutThinking(blocks), { type: 'user', id: cryptoId(), text: ev.task }];
+      }
+      return blocks;
     case 'agent-start':
       return [
         ...withoutThinking(blocks),
@@ -110,6 +118,7 @@ export function TeamChatView({ agents, onGoToTeam }: Props) {
   const [permissionMode, setPermissionMode] = useState<PermissionMode>('manual');
   const [targetAgentId, setTargetAgentId] = useState('');
   const [input, setInput] = useState('');
+  const [attachments, setAttachments] = useState<AttachmentRef[]>([]);
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [running, setRunning] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -165,10 +174,12 @@ export function TeamChatView({ agents, onGoToTeam }: Props) {
     if (mode === 'agent' && !targetAgentId) return;
     setRunning(true);
     setInput('');
+    const currentAttachments = attachments.length > 0 ? attachments : undefined;
+    setAttachments([]);
     if (mode === 'team') {
-      postToExtension({ type: 'runTeam', task: text, mode: permissionMode });
+      postToExtension({ type: 'runTeam', task: text, mode: permissionMode, attachments: currentAttachments });
     } else {
-      postToExtension({ type: 'sendToAgent', agentId: targetAgentId, text, mode: permissionMode });
+      postToExtension({ type: 'sendToAgent', agentId: targetAgentId, text, mode: permissionMode, attachments: currentAttachments });
     }
   }
 
@@ -186,6 +197,12 @@ export function TeamChatView({ agents, onGoToTeam }: Props) {
 
   function newRun() {
     setBlocks([]);
+  }
+
+  function toggleHistory() {
+    const next = !showHistory;
+    setShowHistory(next);
+    if (next) postToExtension({ type: 'listTeamRuns' });
   }
 
   function resetMemory() {
@@ -233,7 +250,7 @@ export function TeamChatView({ agents, onGoToTeam }: Props) {
           <button className="btn-icon" onClick={newRun} title="Limpiar vista">
             <IconX size={15} />
           </button>
-          <button className="btn-icon" onClick={() => setShowHistory((v) => !v)} title="Historial de ejecuciones de equipo">
+          <button className="btn-icon" onClick={toggleHistory} title="Historial de ejecuciones de equipo">
             <IconClock size={15} />
           </button>
         </div>
@@ -327,6 +344,8 @@ export function TeamChatView({ agents, onGoToTeam }: Props) {
             onCancel={cancel}
             running={running}
             placeholder={mode === 'team' ? 'Describí la tarea para el equipo...' : 'Mensaje para el agente seleccionado...'}
+            attachments={attachments}
+            onAttachmentsChange={setAttachments}
           />
         </>
       )}

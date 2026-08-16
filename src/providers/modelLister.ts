@@ -1,3 +1,4 @@
+import * as vscode from 'vscode';
 import { ModelInfo } from '../shared/protocol';
 
 const ANTHROPIC_MODELS_URL = 'https://api.anthropic.com/v1/models';
@@ -30,6 +31,11 @@ export async function listAnthropicModels(apiKey: string): Promise<ModelInfo[]> 
   return data
     .map((entry) => ({ id: entry.id, provider: 'anthropic', free: false }))
     .sort((a, b) => a.id.localeCompare(b.id));
+}
+
+export async function listVscodeCopilotModels(): Promise<ModelInfo[]> {
+  const models = await vscode.lm.selectChatModels({ vendor: 'copilot' });
+  return models.map((m) => ({ id: m.id, provider: 'copilot', free: true }));
 }
 
 function toModelInfo(entry: any): ModelInfo {

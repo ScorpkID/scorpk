@@ -23,7 +23,10 @@ export function AccountView({ user }: Props) {
             <div className="muted">Conectado con {providerLabel(user.provider)}</div>
           </div>
         </div>
-        <button className="btn-ghost" onClick={() => postToExtension({ type: 'authSignOut' })}>
+        <button
+          className="btn-ghost"
+          onClick={() => postToExtension({ type: user.provider === 'huggingface' ? 'hfSignOut' : 'authSignOut' })}
+        >
           Cerrar sesión
         </button>
       </div>
@@ -34,5 +37,6 @@ export function AccountView({ user }: Props) {
 function providerLabel(provider: string): string {
   if (provider === 'github') return 'GitHub';
   if (provider === 'google') return 'Google';
+  if (provider === 'huggingface') return 'Hugging Face';
   return 'correo';
 }

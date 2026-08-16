@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { randomUUID } from 'crypto';
 import { ProviderStore } from '../providers/providerStore';
 import { createClient } from '../providers/clientFactory';
-import { StoredProviderConfig } from '../providers/types';
+import { HUGGINGFACE_ROUTER_BASE_URL, StoredProviderConfig, VSCODE_COPILOT_KEY_SENTINEL } from '../providers/types';
 import {
   ProviderConfig,
   WebviewToExtensionMessage,
@@ -19,12 +19,13 @@ import { allTools, toolHandlers, buildToolCallDiff } from '../agents/tools';
 import { runAgent, ApprovalResult } from '../agents/agentRuntime';
 import { resolveApproval, permissionModeSystemSuffix } from '../agents/permissionMode';
 import { historyToReplayEvents } from '../agents/historyReplay';
-import { listOpenAICompatibleModels, listAnthropicModels } from '../providers/modelLister';
+import { listOpenAICompatibleModels, listAnthropicModels, listVscodeCopilotModels } from '../providers/modelLister';
 import { TeamStore } from '../teams/teamStore';
 import { runTeamSequential, runDirectAgentTurn, TeamRunDeps } from '../teams/teamRuntime';
 import { ConversationStore } from '../conversations/conversationStore';
 import { TeamConversationStore } from '../teams/teamConversationStore';
 import { AuthService } from '../auth/authService';
+import { HuggingFaceAuthService } from '../auth/huggingFaceAuthService';
 
 const SYSTEM_PROMPT = `Eres Scorpk, un agente de programación con acceso real al workspace del usuario en Visual Studio Code.
 Usa las herramientas disponibles (read_file, list_dir, write_file, delete_file, run_terminal_command, git_status, git_diff)
@@ -32,6 +33,10 @@ para leer, escribir y ejecutar cosas en el proyecto cuando lo necesites, en vez 
 Si hay una decisión concreta que le corresponde al usuario (elegir entre alternativas, confirmar un enfoque cuando
 hay más de uno razonable), usa la herramienta ask_user en vez de preguntar en texto plano — no abuses de ella.
 Sé directo y conciso en tus respuestas.`;
+
+// Únicas URLs que el webview puede pedirle a la extensión abrir en el navegador
+// (evita que cualquier mensaje inesperado abra una URL arbitraria del lado del host).
+const ALLOWED_EXTERNAL_URLS = new Set<string>(['https://aistudio.google.com/apikey']);
 
 export class ScorpkViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'scorpk.panel';
@@ -56,6 +61,7 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
     private readonly conversationStore: ConversationStore,
     private readonly teamConversationStore: TeamConversationStore,
     private readonly authService: AuthService,
+    private readonly hfAuthService: HuggingFaceAuthService,
   ) {
     this.activeConversationId = this.conversationStore.getActiveId();
     if (this.activeConversationId) {
@@ -100,6 +106,7 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
         this.sendConversations();
         this.sendTeamRuns();
         await this.sendAuthState();
+        await this.sendHfAuthState();
         if (this.activeConversationId) {
           this.postMessage({
             type: 'conversationLoaded',
@@ -284,12 +291,94 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
           this.activeTeamRunController?.abort();
         }
         break;
+      case 'hfSignIn': {
+        try {
+          const url = this.hfAuthService.beginSignIn();
+          await vscode.env.openExternal(vscode.Uri.parse(url));
+        } catch (err: any) {
+          this.postMessage({ type: 'authError', message: err?.message ?? String(err) });
+        }
+        break;
+      }
+      case 'hfSignOut':
+        await this.hfAuthService.signOut();
+        await this.sendHfAuthState();
+        break;
+      case 'connectHuggingFace':
+        await this.connectHuggingFace();
+        break;
+      case 'detectCopilot':
+        await this.detectCopilot();
+        break;
+      case 'openExternalUrl':
+        if (ALLOWED_EXTERNAL_URLS.has(message.url)) {
+          await vscode.env.openExternal(vscode.Uri.parse(message.url));
+        }
+        break;
     }
   }
 
   private async sendAuthState(): Promise<void> {
     const user: AuthUser | null = await this.authService.getUser();
     this.postMessage({ type: 'authState', user });
+  }
+
+  private async sendHfAuthState(): Promise<void> {
+    const user = await this.hfAuthService.getUser();
+    this.postMessage({ type: 'hfAuthState', user });
+  }
+
+  /** Llamado desde extension.ts cuando el URI handler termina el login de HF. */
+  public async refreshHfAuthState(): Promise<void> {
+    await this.sendHfAuthState();
+  }
+
+  private async connectHuggingFace(): Promise<void> {
+    const token = await this.hfAuthService.getValidAccessToken();
+    if (!token) {
+      // Todavía no se logueó con HF acá — arrancamos el mismo flujo de login;
+      // una vez que vuelva, el usuario puede tocar "Conectar" de nuevo.
+      await this.handleMessage({ type: 'hfSignIn' });
+      return;
+    }
+    const existing = this.providerStore.list().find((p) => p.kind === 'huggingface-oauth');
+    if (existing) {
+      await this.providerStore.update(existing, token);
+    } else {
+      await this.providerStore.add(
+        { name: 'Hugging Face', kind: 'huggingface-oauth', defaultModel: 'meta-llama/Llama-3.3-70B-Instruct' },
+        token,
+      );
+    }
+    await this.sendProviders();
+  }
+
+  private async detectCopilot(): Promise<void> {
+    try {
+      const models = await listVscodeCopilotModels();
+      if (models.length === 0) {
+        this.postMessage({
+          type: 'copilotDetectResult',
+          ok: false,
+          message: 'No se encontró ningún modelo de Copilot. ¿Tenés la extensión de GitHub Copilot activa?',
+        });
+        return;
+      }
+      const existing = this.providerStore.list().find((p) => p.kind === 'vscode-copilot');
+      const defaultModel = models[0].id;
+      if (existing) {
+        await this.providerStore.update({ ...existing, defaultModel }, VSCODE_COPILOT_KEY_SENTINEL);
+      } else {
+        await this.providerStore.add(
+          { name: 'GitHub Copilot', kind: 'vscode-copilot', defaultModel },
+          VSCODE_COPILOT_KEY_SENTINEL,
+        );
+      }
+      await this.sendProviders();
+      this.postMessage({ type: 'copilotDetectResult', ok: true, message: `Copilot conectado (${models.length} modelo(s) disponible(s)).` });
+    } catch (err: any) {
+      this.postMessage({ type: 'copilotDetectResult', ok: false, message: err?.message ?? String(err) });
+    }
   }
 
   private async pickFile(requestId: string): Promise<void> {
@@ -447,7 +536,12 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
         models =
           provider.kind === 'anthropic'
             ? await listAnthropicModels(apiKey)
-            : await listOpenAICompatibleModels(provider.baseUrl ?? '', apiKey);
+            : provider.kind === 'vscode-copilot'
+              ? await listVscodeCopilotModels()
+              : await listOpenAICompatibleModels(
+                  provider.kind === 'huggingface-oauth' ? HUGGINGFACE_ROUTER_BASE_URL : provider.baseUrl ?? '',
+                  apiKey,
+                );
       } else {
         if (!source.apiKey) throw new Error('Ingresá la API key para poder cargar los modelos.');
         models =

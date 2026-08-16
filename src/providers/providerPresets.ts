@@ -7,9 +7,38 @@ export interface ProviderPreset {
   baseUrl?: string;
   defaultModel?: string;
   editableBaseUrl: boolean;
+  /**
+   * 'apiKey' (default si se omite) = el usuario pega una key manualmente.
+   * 'oauth' = se conecta con un botón de login, sin pegar nada.
+   * 'native' = usa un permiso ya otorgado a VS Code (Copilot), sin key ni login propio.
+   */
+  authMode?: 'apiKey' | 'oauth' | 'native';
 }
 
 export const PROVIDER_PRESETS: ProviderPreset[] = [
+  {
+    id: 'huggingface',
+    label: 'Hugging Face',
+    kind: 'huggingface-oauth',
+    defaultModel: 'meta-llama/Llama-3.3-70B-Instruct',
+    editableBaseUrl: false,
+    authMode: 'oauth',
+  },
+  {
+    id: 'copilot',
+    label: 'GitHub Copilot',
+    kind: 'vscode-copilot',
+    editableBaseUrl: false,
+    authMode: 'native',
+  },
+  {
+    id: 'gemini',
+    label: 'Google Gemini',
+    kind: 'openai-compatible',
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+    defaultModel: 'gemini-2.0-flash',
+    editableBaseUrl: false,
+  },
   {
     id: 'openai',
     label: 'OpenAI',

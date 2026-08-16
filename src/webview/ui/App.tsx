@@ -25,7 +25,10 @@ export function App() {
   const [providers, setProviders] = useState<ProviderConfig[]>([]);
   const [agents, setAgents] = useState<AgentDefinition[]>([]);
   const [user, setUser] = useState<AuthUser | null>(null);
+  const [hfUser, setHfUser] = useState<AuthUser | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
+  const [hfAuthChecked, setHfAuthChecked] = useState(false);
+  const effectiveUser = user ?? hfUser;
 
   function setView(next: ViewId) {
     setViewState(next);
@@ -41,6 +44,9 @@ export function App() {
       } else if (message.type === 'authState') {
         setUser(message.user);
         setAuthChecked(true);
+      } else if (message.type === 'hfAuthState') {
+        setHfUser(message.user);
+        setHfAuthChecked(true);
       }
     });
     postToExtension({ type: 'ready' });
@@ -48,14 +54,17 @@ export function App() {
     postToExtension({ type: 'listAgents' });
     // Red de seguridad: si por algún motivo nunca llega authState (Supabase
     // caído, sin red), no dejamos la pantalla de carga trabada para siempre.
-    const fallback = setTimeout(() => setAuthChecked(true), 10000);
+    const fallback = setTimeout(() => {
+      setAuthChecked(true);
+      setHfAuthChecked(true);
+    }, 10000);
     return () => {
       unsubscribe();
       clearTimeout(fallback);
     };
   }, []);
 
-  if (!authChecked) {
+  if (!authChecked || !hfAuthChecked) {
     return (
       <div className="auth-loading">
         <span className="app-logo auth-gate-logo">
@@ -65,16 +74,16 @@ export function App() {
     );
   }
 
-  if (!user) {
+  if (!effectiveUser) {
     return <AuthGateView />;
   }
 
   return (
     <div className="app-shell">
-      <Sidebar active={view} onSelect={setView} logoUri={LOGO_URI} user={user} />
+      <Sidebar active={view} onSelect={setView} logoUri={LOGO_URI} user={effectiveUser} />
       <main className="app-content">
         <KeepAlive active={view === 'agent'}>
-          <ChatView providers={providers} onGoToProviders={() => setView('providers')} username={user.name} />
+          <ChatView providers={providers} onGoToProviders={() => setView('providers')} username={effectiveUser.name} />
         </KeepAlive>
         <KeepAlive active={view === 'team'}>
           <TeamTab agents={agents} providers={providers} />
@@ -89,7 +98,7 @@ export function App() {
           <HelpView />
         </KeepAlive>
         <KeepAlive active={view === 'account'}>
-          <AccountView user={user} />
+          <AccountView user={effectiveUser} />
         </KeepAlive>
       </main>
     </div>

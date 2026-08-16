@@ -2,7 +2,7 @@
   "name": "scorpk-agent",
   "displayName": "Scorpk Agent",
   "description": "Centro de control de agentes de IA para programación dentro de VS Code. Multi-proveedor, multiagente, acceso total al editor.",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "publisher": "ScorpkDev",
   "license": "MIT",
   "icon": "resources/marketplace-icon.png",
@@ -19,7 +19,7 @@
   },
   "homepage": "https://github.com/ScorpkID/scorpk#readme",
   "engines": {
-    "vscode": "^1.85.0"
+    "vscode": "^1.95.0"
   },
   "categories": [
     "Other",
@@ -91,7 +91,7 @@
     "@types/node": "^20.14.0",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
-    "@types/vscode": "^1.85.0",
+    "@types/vscode": "^1.95.0",
     "@types/diff": "^5.2.1",
     "esbuild": "^0.23.0",
     "typescript": "^5.5.4"

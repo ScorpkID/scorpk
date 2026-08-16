@@ -4,6 +4,7 @@ import { TeamStore } from './teams/teamStore';
 import { ConversationStore } from './conversations/conversationStore';
 import { TeamConversationStore } from './teams/teamConversationStore';
 import { AuthService } from './auth/authService';
+import { HuggingFaceAuthService } from './auth/huggingFaceAuthService';
 import { ScorpkViewProvider } from './webview/ScorpkViewProvider';
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -12,6 +13,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const conversationStore = new ConversationStore(context);
   const teamConversationStore = new TeamConversationStore(context);
   const authService = new AuthService(context);
+  const hfAuthService = new HuggingFaceAuthService(context);
   const viewProvider = new ScorpkViewProvider(
     context.extensionUri,
     providerStore,
@@ -19,6 +21,7 @@ export function activate(context: vscode.ExtensionContext): void {
     conversationStore,
     teamConversationStore,
     authService,
+    hfAuthService,
   );
 
   context.subscriptions.push(
@@ -33,6 +36,15 @@ export function activate(context: vscode.ExtensionContext): void {
       handleUri(uri: vscode.Uri) {
         const code = new URLSearchParams(uri.query).get('code');
         if (!code) return;
+        if (uri.path === '/hf-callback') {
+          hfAuthService
+            .completeSignIn(code)
+            .then(() => viewProvider.refreshHfAuthState())
+            .catch((err: any) => {
+              vscode.window.showErrorMessage(`Scorpk: no se pudo completar el login con Hugging Face (${err?.message ?? err}).`);
+            });
+          return;
+        }
         authService.completeOAuthSignIn(code).catch((err: any) => {
           vscode.window.showErrorMessage(`Scorpk: no se pudo completar el login (${err?.message ?? err}).`);
         });

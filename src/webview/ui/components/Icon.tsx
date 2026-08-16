@@ -300,6 +300,26 @@ export function IconGoogle(props: IconProps) {
   );
 }
 
+export function IconHuggingFace(props: IconProps) {
+  const { size = 16 } = props;
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M9 10c0 .5-.4 1-1 1s-1-.5-1-1 .4-1 1-1 1 .5 1 1z" fill="currentColor" stroke="none" />
+      <path d="M17 10c0 .5-.4 1-1 1s-1-.5-1-1 .4-1 1-1 1 .5 1 1z" fill="currentColor" stroke="none" />
+      <path d="M8.5 14.5c1 1.2 2.2 1.8 3.5 1.8s2.5-.6 3.5-1.8" />
+    </svg>
+  );
+}
+
+export function IconCopilot(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M12 2l2.4 4.9L20 8l-4 3.9.9 5.5L12 14.9 7.1 17.4 8 11.9 4 8l5.6-1.1L12 2z" />
+    </svg>
+  );
+}
+
 export function IconLoader(props: IconProps) {
   return (
     <svg {...base(props)} className={`icon-spin ${props.className ?? ''}`}>

@@ -1,4 +1,4 @@
-export type ProviderKind = 'openai-compatible' | 'anthropic';
+export type ProviderKind = 'openai-compatible' | 'anthropic' | 'huggingface-oauth' | 'vscode-copilot';
 
 export interface ProviderConfig {
   id: string;
@@ -133,7 +133,12 @@ export type WebviewToExtensionMessage =
   | { type: 'authSignInWithOAuth'; provider: 'github' | 'google' }
   | { type: 'authSignOut' }
   | { type: 'confirmAutoMode'; requestId: string }
-  | { type: 'cancelRun'; scope: 'chat' | 'team' };
+  | { type: 'cancelRun'; scope: 'chat' | 'team' }
+  | { type: 'hfSignIn' }
+  | { type: 'hfSignOut' }
+  | { type: 'connectHuggingFace' }
+  | { type: 'detectCopilot' }
+  | { type: 'openExternalUrl'; url: string };
 
 export type ExtensionToWebviewMessage =
   | { type: 'providers'; providers: ProviderConfig[] }
@@ -153,4 +158,6 @@ export type ExtensionToWebviewMessage =
   | { type: 'authInfo'; message: string }
   | { type: 'confirmAutoModeResult'; requestId: string; confirmed: boolean }
   | { type: 'chatRunState'; running: boolean; assistantId?: string; partialText?: string }
-  | { type: 'teamRunState'; running: boolean };
+  | { type: 'teamRunState'; running: boolean }
+  | { type: 'hfAuthState'; user: AuthUser | null }
+  | { type: 'copilotDetectResult'; ok: boolean; message: string };

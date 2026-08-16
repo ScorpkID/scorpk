@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { postToExtension, onExtensionMessage } from '../vscodeApi';
-import { IconGithub, IconGoogle } from './Icon';
+import { IconGithub, IconGoogle, IconHuggingFace } from './Icon';
 import { LOGO_URI } from '../logo';
 
 type Mode = 'signin' | 'signup';
@@ -46,6 +46,17 @@ export function AuthGateView() {
     postToExtension({ type: 'authSignInWithOAuth', provider });
   }
 
+  function hfSignIn() {
+    setBusy(true);
+    setError(undefined);
+    setInfo(undefined);
+    postToExtension({ type: 'hfSignIn' });
+    // El login de HF vuelve por un roundtrip al navegador externo — si el
+    // usuario lo cancela ahí no llega ningún mensaje de vuelta, así que
+    // liberamos el botón igual después de un rato en vez de dejarlo trabado.
+    setTimeout(() => setBusy(false), 20000);
+  }
+
   function switchMode() {
     setMode((m) => (m === 'signin' ? 'signup' : 'signin'));
     setError(undefined);
@@ -72,6 +83,10 @@ export function AuthGateView() {
           <button type="button" className="btn-ghost oauth-btn" onClick={() => oauth('google')} disabled={busy}>
             <IconGoogle size={16} />
             Continuar con Google
+          </button>
+          <button type="button" className="btn-ghost oauth-btn" onClick={hfSignIn} disabled={busy}>
+            <IconHuggingFace size={16} />
+            Continuar con Hugging Face
           </button>
         </div>
 

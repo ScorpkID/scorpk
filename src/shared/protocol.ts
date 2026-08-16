@@ -60,6 +60,7 @@ export type TeamStreamEvent =
     }
   | { kind: 'agent-tool-result'; agentId: string; callId: string; result: string; isError: boolean }
   | { kind: 'agent-tool-rejected'; agentId: string; callId: string; reason?: string }
+  | { kind: 'agent-usage'; agentId: string; inputTokens: number; outputTokens: number }
   | { kind: 'agent-done'; agentId: string }
   | { kind: 'run-error'; message: string }
   | { kind: 'run-cancelled' }
@@ -76,12 +77,19 @@ export type ChatStreamEvent =
   | { kind: 'run-cancelled' }
   | { kind: 'run-done' };
 
+export interface UsageTotals {
+  inputTokens: number;
+  outputTokens: number;
+  costUsd?: number;
+}
+
 export interface ConversationSummary {
   id: string;
   title: string;
   providerId: string;
   model: string;
   updatedAt: number;
+  usage?: UsageTotals;
 }
 
 export interface TeamRunSummary {
@@ -168,7 +176,9 @@ export type WebviewToExtensionMessage =
   | { type: 'addMcpServer'; server: NewMcpServerInput }
   | { type: 'updateMcpServer'; server: McpServerConfig }
   | { type: 'removeMcpServer'; id: string }
-  | { type: 'detectMcpTools'; id: string };
+  | { type: 'detectMcpTools'; id: string }
+  | { type: 'listUsage' }
+  | { type: 'resetUsage'; providerId: string };
 
 export type ExtensionToWebviewMessage =
   | { type: 'providers'; providers: ProviderConfig[] }
@@ -195,4 +205,6 @@ export type ExtensionToWebviewMessage =
   | { type: 'searchWorkspaceFilesResult'; requestId: string; paths: string[] }
   | { type: 'activeSelectionResult'; requestId: string; selection: ActiveSelectionInfo | null }
   | { type: 'mcpServers'; servers: McpServerConfig[] }
-  | { type: 'mcpDetectResult'; id: string; ok: boolean; message: string; toolNames: string[] };
+  | { type: 'mcpDetectResult'; id: string; ok: boolean; message: string; toolNames: string[] }
+  | { type: 'runFromEditor'; text: string }
+  | { type: 'usageState'; totals: Record<string, UsageTotals & { providerName: string }> };

@@ -14,6 +14,7 @@ export class OpenAICompatibleClient implements LLMClient {
     const body = {
       model: params.model,
       stream: true,
+      stream_options: { include_usage: true },
       messages: toOpenAIMessages(params.system, params.messages),
       ...(params.tools && params.tools.length > 0
         ? { tools: params.tools.map(toOpenAITool), tool_choice: 'auto' }
@@ -38,6 +39,7 @@ export class OpenAICompatibleClient implements LLMClient {
     const toolCalls = new Map<number, OpenAIToolCallAccumulator>();
     const decoder = new TextDecoder();
     let buffer = '';
+    let usage: { inputTokens: number; outputTokens: number } | undefined;
 
     for await (const chunk of response.body as unknown as AsyncIterable<Uint8Array>) {
       buffer += decoder.decode(chunk, { stream: true });
@@ -55,6 +57,10 @@ export class OpenAICompatibleClient implements LLMClient {
           parsed = JSON.parse(data);
         } catch {
           continue;
+        }
+
+        if (parsed.usage) {
+          usage = { inputTokens: parsed.usage.prompt_tokens ?? 0, outputTokens: parsed.usage.completion_tokens ?? 0 };
         }
 
         const delta = parsed.choices?.[0]?.delta;
@@ -85,6 +91,10 @@ export class OpenAICompatibleClient implements LLMClient {
         args = { _raw: call.argumentsJson };
       }
       yield { type: 'tool-call', id: call.id || `call_${call.name}`, name: call.name, arguments: args };
+    }
+
+    if (usage) {
+      yield { type: 'usage', inputTokens: usage.inputTokens, outputTokens: usage.outputTokens };
     }
 
     yield { type: 'done' };

@@ -143,6 +143,34 @@ export async function editFileHandler(args: Record<string, unknown>): Promise<st
   return `Archivo editado: ${relPath}`;
 }
 
+export const moveFileTool: ToolDef = {
+  name: 'move_file',
+  description: 'Mueve o renombra un archivo dentro del workspace.',
+  parameters: {
+    type: 'object',
+    properties: {
+      from: { type: 'string', description: 'Ruta relativa actual del archivo' },
+      to: { type: 'string', description: 'Ruta relativa destino' },
+    },
+    required: ['from', 'to'],
+  },
+  requiresApproval: true,
+};
+
+export async function moveFileHandler(args: Record<string, unknown>): Promise<string> {
+  const from = String(args.from ?? '');
+  const to = String(args.to ?? '');
+  if (!from || !to) return 'Error: from y to son obligatorios.';
+  const fromUri = resolveInWorkspace(from);
+  const toUri = resolveInWorkspace(to);
+  try {
+    await vscode.workspace.fs.rename(fromUri, toUri, { overwrite: false });
+  } catch (err: any) {
+    return `Error: no se pudo mover ${from} a ${to} (${err?.message ?? err}).`;
+  }
+  return `Movido: ${from} → ${to}`;
+}
+
 export const deleteFileTool: ToolDef = {
   name: 'delete_file',
   description: 'Elimina un archivo del workspace, dada una ruta relativa.',
@@ -187,11 +215,12 @@ function normalizeEol(text: string, eol: '\r\n' | '\n'): string {
 
 export interface FileChange {
   path: string;
-  kind: 'write' | 'edit' | 'delete';
+  kind: 'write' | 'edit' | 'delete' | 'move';
   existedBefore: boolean;
   before: string;
   after: string;
   diff: string;
+  movedFrom?: string;
 }
 
 /**
@@ -206,6 +235,7 @@ export interface FileChange {
  * chat como el checkpoint.
  */
 export async function computeFileChange(name: string, args: Record<string, unknown>): Promise<FileChange | undefined> {
+  if (name === 'move_file') return computeMoveChange(args);
   if (name !== 'write_file' && name !== 'edit_file' && name !== 'delete_file') return undefined;
 
   const relPath = String(args.path ?? '');
@@ -257,6 +287,31 @@ export async function computeFileChange(name: string, args: Record<string, unkno
     before,
     after,
     diff: lines.join('\n'),
+  };
+}
+
+async function computeMoveChange(args: Record<string, unknown>): Promise<FileChange | undefined> {
+  const from = String(args.from ?? '');
+  const to = String(args.to ?? '');
+  if (!from || !to) return undefined;
+
+  let before = '';
+  try {
+    const uri = resolveInWorkspace(from);
+    const bytes = await vscode.workspace.fs.readFile(uri);
+    before = Buffer.from(bytes).toString('utf8');
+  } catch {
+    return undefined;
+  }
+
+  return {
+    path: to,
+    kind: 'move',
+    existedBefore: false,
+    before,
+    after: before,
+    diff: `Mover: ${from} → ${to}`,
+    movedFrom: from,
   };
 }
 

@@ -147,6 +147,8 @@ async function* runAgentTurn(
       yield { kind: 'agent-tool-result', agentId: agent.id, callId: ev.callId, result: ev.result, isError: ev.isError };
     } else if (ev.type === 'tool-rejected') {
       yield { kind: 'agent-tool-rejected', agentId: agent.id, callId: ev.callId, reason: ev.reason };
+    } else if (ev.type === 'usage') {
+      yield { kind: 'agent-usage', agentId: agent.id, inputTokens: ev.inputTokens, outputTokens: ev.outputTokens };
     } else if (ev.type === 'done') {
       yield { kind: 'agent-text-done', agentId: agent.id, id: textId };
     }

@@ -1,6 +1,20 @@
 import { useState } from 'react';
 import { postToExtension } from '../vscodeApi';
-import { IconChevronDown, IconChevronUp, IconEdit, IconFile, IconFolder, IconGitBranch, IconLoader, IconTerminal, IconTrash, IconWrench } from './Icon';
+import {
+  IconAlertTriangle,
+  IconArrowRight,
+  IconChevronDown,
+  IconChevronUp,
+  IconEdit,
+  IconFile,
+  IconFolder,
+  IconGitBranch,
+  IconLoader,
+  IconSearch,
+  IconTerminal,
+  IconTrash,
+  IconWrench,
+} from './Icon';
 
 export interface ToolBlock {
   callId: string;
@@ -20,9 +34,14 @@ const TOOL_ICONS: Record<string, (size: number) => JSX.Element> = {
   write_file: (s) => <IconEdit size={s} />,
   edit_file: (s) => <IconEdit size={s} />,
   delete_file: (s) => <IconTrash size={s} />,
+  move_file: (s) => <IconArrowRight size={s} />,
+  search_files: (s) => <IconSearch size={s} />,
+  get_diagnostics: (s) => <IconAlertTriangle size={s} />,
   run_terminal_command: (s) => <IconTerminal size={s} />,
   git_status: (s) => <IconGitBranch size={s} />,
   git_diff: (s) => <IconGitBranch size={s} />,
+  git_add: (s) => <IconGitBranch size={s} />,
+  git_commit: (s) => <IconGitBranch size={s} />,
 };
 
 const TOOL_LABELS: Record<string, string> = {
@@ -31,9 +50,14 @@ const TOOL_LABELS: Record<string, string> = {
   write_file: 'Escribir',
   edit_file: 'Editar',
   delete_file: 'Borrar',
+  move_file: 'Mover',
+  search_files: 'Buscar',
+  get_diagnostics: 'Diagnósticos',
   run_terminal_command: 'Terminal',
   git_status: 'Git status',
   git_diff: 'Git diff',
+  git_add: 'Git add',
+  git_commit: 'Git commit',
 };
 
 const COLLAPSE_THRESHOLD = 400;

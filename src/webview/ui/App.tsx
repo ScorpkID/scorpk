@@ -47,6 +47,8 @@ export function App() {
       } else if (message.type === 'hfAuthState') {
         setHfUser(message.user);
         setHfAuthChecked(true);
+      } else if (message.type === 'runFromEditor') {
+        setView('agent');
       }
     });
     postToExtension({ type: 'ready' });

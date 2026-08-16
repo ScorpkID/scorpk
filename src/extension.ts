@@ -8,7 +8,13 @@ import { HuggingFaceAuthService } from './auth/huggingFaceAuthService';
 import { CheckpointStore } from './checkpoints/checkpointStore';
 import { SettingsStore } from './settings/settingsStore';
 import { McpServerStore } from './mcp/mcpServerStore';
+import { UsageStore } from './usage/usageStore';
 import { ScorpkViewProvider } from './webview/ScorpkViewProvider';
+import {
+  ASK_ABOUT_SELECTION_COMMAND,
+  FIX_DIAGNOSTIC_COMMAND,
+  ScorpkCodeActionProvider,
+} from './editor/scorpkCodeActionProvider';
 
 export function activate(context: vscode.ExtensionContext): void {
   const providerStore = new ProviderStore(context);
@@ -20,6 +26,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const checkpointStore = new CheckpointStore(context);
   const settingsStore = new SettingsStore(context);
   const mcpServerStore = new McpServerStore(context);
+  const usageStore = new UsageStore(context);
   const viewProvider = new ScorpkViewProvider(
     context.extensionUri,
     providerStore,
@@ -31,6 +38,7 @@ export function activate(context: vscode.ExtensionContext): void {
     checkpointStore,
     settingsStore,
     mcpServerStore,
+    usageStore,
   );
 
   context.subscriptions.push(
@@ -41,6 +49,39 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.commands.registerCommand('scorpk.newChat', () => {
       viewProvider.newChat();
+    }),
+    vscode.languages.registerCodeActionsProvider(
+      { scheme: 'file' },
+      new ScorpkCodeActionProvider(),
+      ScorpkCodeActionProvider.metadata,
+    ),
+    vscode.commands.registerCommand(ASK_ABOUT_SELECTION_COMMAND, async () => {
+      const editor = vscode.window.activeTextEditor;
+      if (!editor || editor.selection.isEmpty) return;
+      const text = editor.document.getText(editor.selection);
+      const relPath = vscode.workspace.asRelativePath(editor.document.uri, false);
+      const startLine = editor.selection.start.line + 1;
+      const endLine = editor.selection.end.line + 1;
+      const lineLabel = startLine === endLine ? `línea ${startLine}` : `líneas ${startLine}-${endLine}`;
+      const message = `Explicame este código de ${relPath} (${lineLabel}):\n\n\`\`\`\n${text}\n\`\`\``;
+      await vscode.commands.executeCommand('workbench.view.extension.scorpk');
+      viewProvider.runFromEditor(message);
+    }),
+    vscode.commands.registerCommand(FIX_DIAGNOSTIC_COMMAND, async (uri: vscode.Uri, diagnostic: vscode.Diagnostic) => {
+      if (!uri || !diagnostic) return;
+      let codeSnippet = '';
+      try {
+        const doc = await vscode.workspace.openTextDocument(uri);
+        codeSnippet = doc.getText(diagnostic.range);
+      } catch {
+        codeSnippet = '';
+      }
+      const relPath = vscode.workspace.asRelativePath(uri, false);
+      const line = diagnostic.range.start.line + 1;
+      const codeBlock = codeSnippet ? `\n\nCódigo:\n\`\`\`\n${codeSnippet}\n\`\`\`` : '';
+      const message = `Arreglá este error en ${relPath}:${line}:\n\n"${diagnostic.message}"${codeBlock}`;
+      await vscode.commands.executeCommand('workbench.view.extension.scorpk');
+      viewProvider.runFromEditor(message);
     }),
     vscode.window.registerUriHandler({
       handleUri(uri: vscode.Uri) {

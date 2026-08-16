@@ -3,23 +3,34 @@ import { ViewHeader } from './ViewHeader';
 import { postToExtension, onExtensionMessage } from '../vscodeApi';
 import { IconSliders, IconUsers } from './Icon';
 import { McpManager } from './McpManager';
+import { UsageTotals } from '../../../shared/protocol';
 
 interface Props {
   onGoToProviders: () => void;
   onGoToTeam: () => void;
 }
 
+type UsageByProvider = Record<string, UsageTotals & { providerName: string }>;
+
 export function SettingsView({ onGoToProviders, onGoToTeam }: Props) {
   const [liveEditorPreview, setLiveEditorPreview] = useState(true);
+  const [usage, setUsage] = useState<UsageByProvider>({});
 
   useEffect(() => {
     const unsubscribe = onExtensionMessage((message) => {
       if (message.type === 'settingsState') {
         setLiveEditorPreview(message.liveEditorPreview);
+      } else if (message.type === 'usageState') {
+        setUsage(message.totals);
       }
     });
+    postToExtension({ type: 'listUsage' });
     return unsubscribe;
   }, []);
+
+  function resetUsage(providerId: string) {
+    postToExtension({ type: 'resetUsage', providerId });
+  }
 
   function toggleLiveEditorPreview() {
     const next = !liveEditorPreview;
@@ -78,10 +89,47 @@ export function SettingsView({ onGoToProviders, onGoToTeam }: Props) {
         </section>
 
         <section className="settings-section">
+          <div className="section-heading">Uso</div>
+          <p className="muted">
+            Tokens acumulados por proveedor desde que se instaló Scorpk. El costo es un estimado aproximado según
+            precios de referencia — no está disponible para todos los modelos/proveedores.
+          </p>
+          {Object.keys(usage).length === 0 ? (
+            <p className="muted">Todavía no hay uso registrado.</p>
+          ) : (
+            <div className="usage-list">
+              {Object.entries(usage).map(([providerId, u]) => (
+                <div key={providerId} className="usage-row">
+                  <span className="usage-row-name">{u.providerName}</span>
+                  <span className="usage-row-tokens">
+                    {formatTokens(u.inputTokens)} in · {formatTokens(u.outputTokens)} out
+                  </span>
+                  <span className="usage-row-cost">{u.costUsd !== undefined ? formatCost(u.costUsd) : '—'}</span>
+                  <button className="btn-ghost usage-row-reset" onClick={() => resetUsage(providerId)}>
+                    Reiniciar
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="settings-section">
           <div className="section-heading">Acerca de</div>
           <p className="muted">Scorpk v0.0.1 — centro de control de agentes de IA para programación.</p>
         </section>
       </div>
     </div>
   );
+}
+
+export function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+  return String(n);
+}
+
+export function formatCost(usd: number): string {
+  if (usd < 0.01) return `$${usd.toFixed(4)}`;
+  return `$${usd.toFixed(2)}`;
 }

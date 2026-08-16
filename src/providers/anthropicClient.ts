@@ -26,9 +26,16 @@ export class AnthropicClient implements LLMClient {
     );
 
     const pendingToolUse = new Map<number, { id: string; name: string; partialJson: string }>();
+    let inputTokens = 0;
+    let outputTokens = 0;
 
     for await (const event of stream) {
-      if (event.type === 'content_block_start') {
+      if (event.type === 'message_start') {
+        inputTokens = event.message.usage.input_tokens;
+        outputTokens = event.message.usage.output_tokens;
+      } else if (event.type === 'message_delta') {
+        outputTokens = event.usage.output_tokens;
+      } else if (event.type === 'content_block_start') {
         if (event.content_block.type === 'tool_use') {
           pendingToolUse.set(event.index, {
             id: event.content_block.id,
@@ -58,6 +65,9 @@ export class AnthropicClient implements LLMClient {
       }
     }
 
+    if (inputTokens > 0 || outputTokens > 0) {
+      yield { type: 'usage', inputTokens, outputTokens };
+    }
     yield { type: 'done' };
   }
 }

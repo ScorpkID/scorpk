@@ -14,6 +14,7 @@ import {
   TeamStreamEvent,
   AuthUser,
   AttachmentRef,
+  UsageTotals,
 } from '../shared/protocol';
 import { ChatMessage } from '../agents/types';
 import { allTools, toolHandlers, computeFileChange, FileChange, setLiveEditorPreviewEnabled } from '../agents/tools';
@@ -32,15 +33,18 @@ import { CheckpointStore } from '../checkpoints/checkpointStore';
 import { SettingsStore } from '../settings/settingsStore';
 import { McpServerStore } from '../mcp/mcpServerStore';
 import { McpClientManager } from '../mcp/mcpClientManager';
+import { UsageStore } from '../usage/usageStore';
 
 const SYSTEM_PROMPT = `Eres Scorpk, un agente de programación con acceso real al workspace del usuario en Visual Studio Code.
-Usa las herramientas disponibles (read_file, list_dir, write_file, edit_file, delete_file, run_terminal_command,
-git_status, git_diff) para leer, escribir y ejecutar cosas en el proyecto cuando lo necesites, en vez de asumir
-contenido que no has visto.
+Usa las herramientas disponibles (read_file, list_dir, write_file, edit_file, delete_file, move_file,
+search_files, get_diagnostics, run_terminal_command, git_status, git_diff, git_add, git_commit) para leer,
+escribir y ejecutar cosas en el proyecto cuando lo necesites, en vez de asumir contenido que no has visto.
 Para modificar un archivo que ya existe, preferí siempre edit_file (reemplazo puntual de una porción) en vez de
 reescribirlo entero con write_file — reservá write_file para archivos nuevos o cuando el pedido es realmente una
 reescritura completa. Si old_string no matchea de forma única, agregá más líneas de contexto y reintentá en vez
 de rendirte o reescribir todo el archivo como atajo.
+Para encontrar dónde está algo en un repo grande, usá search_files en vez de leer archivos uno por uno con
+read_file. Antes de asumir que algo compila o pasa el linter, podés chequear get_diagnostics en vez de asumir.
 Si hay una decisión concreta que le corresponde al usuario (elegir entre alternativas, confirmar un enfoque cuando
 hay más de uno razonable), usa la herramienta ask_user en vez de preguntar en texto plano — no abuses de ella.
 No te quedes en la versión más mínima o genérica de lo que se te pide. Cuando generes una interfaz o cualquier
@@ -86,6 +90,7 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
     private readonly checkpointStore: CheckpointStore,
     private readonly settingsStore: SettingsStore,
     private readonly mcpServerStore: McpServerStore,
+    private readonly usageStore: UsageStore,
   ) {
     this.mcpClientManager = new McpClientManager(mcpServerStore);
     setLiveEditorPreviewEnabled(this.settingsStore.getLiveEditorPreview());
@@ -120,6 +125,13 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
     this.mcpClientManager.disconnectAll();
   }
 
+  /** Llamado desde los comandos de code action del editor (ver extension.ts)
+   * para inyectar una pregunta armada a partir de una selección o un error
+   * del editor, sin que el usuario tenga que copiar/pegar al panel. */
+  public runFromEditor(text: string): void {
+    this.postMessage({ type: 'runFromEditor', text });
+  }
+
   public newChat(): void {
     this.activeConversationId = null;
     this.history = [];
@@ -138,6 +150,7 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
         await this.sendAuthState();
         await this.sendHfAuthState();
         this.postMessage({ type: 'settingsState', liveEditorPreview: this.settingsStore.getLiveEditorPreview() });
+        await this.sendUsageState();
         if (this.activeConversationId) {
           this.postMessage({
             type: 'conversationLoaded',
@@ -387,7 +400,30 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
       case 'detectMcpTools':
         await this.detectMcpTools(message.id);
         break;
+      case 'listUsage':
+        await this.sendUsageState();
+        break;
+      case 'resetUsage':
+        await this.usageStore.reset(message.providerId);
+        await this.sendUsageState();
+        break;
     }
+  }
+
+  private async sendUsageState(): Promise<void> {
+    const totals = this.usageStore.list();
+    const providers = this.providerStore.list();
+    const out: Record<string, UsageTotals & { providerName: string }> = {};
+    for (const [providerId, usage] of Object.entries(totals)) {
+      const provider = providers.find((p) => p.id === providerId);
+      out[providerId] = {
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        costUsd: usage.costUsd > 0 ? usage.costUsd : undefined,
+        providerName: provider?.name ?? '(proveedor eliminado)',
+      };
+    }
+    this.postMessage({ type: 'usageState', totals: out });
   }
 
   private async sendAuthState(): Promise<void> {
@@ -628,6 +664,12 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
       // edit_file (así se ve exactamente igual desde chat, equipo o un
       // revert) — acá solo queda limpiar el pendiente.
       this.pendingFileChanges.delete(ev.callId);
+    } else if (ev.kind === 'agent-usage') {
+      const agent = this.teamStore.get(ev.agentId);
+      if (agent?.providerId) {
+        await this.usageStore.recordUsage(agent.providerId, agent.model, ev.inputTokens, ev.outputTokens);
+        await this.sendUsageState();
+      }
     }
     return ev;
   }
@@ -793,6 +835,11 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
           this.pendingFileChanges.delete(ev.callId);
           this.postMessage({ type: 'chatEvent', event: { kind: 'tool-rejected', callId: ev.callId, reason: ev.reason } });
           await this.persistActiveConversation(providerId, model);
+        } else if (ev.type === 'usage') {
+          await this.usageStore.recordUsage(providerId, model, ev.inputTokens, ev.outputTokens);
+          await this.conversationStore.addUsage(this.activeConversationId!, ev.inputTokens, ev.outputTokens);
+          await this.sendUsageState();
+          this.sendConversations();
         } else if (ev.type === 'cancelled') {
           cancelled = true;
           this.postMessage({ type: 'chatEvent', event: { kind: 'run-cancelled' } });
@@ -910,6 +957,14 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
     const change = this.pendingFileChanges.get(callId);
     this.pendingFileChanges.delete(callId);
     if (!change || isError) return;
+
+    if (change.kind === 'move' && change.movedFrom) {
+      // El origen tenía contenido antes (revertir = volver a escribirlo ahí) y
+      // el destino no existía (revertir = borrarlo).
+      await this.checkpointStore.captureIfAbsent(conversationId, userMsgId, change.movedFrom, change.before);
+      await this.checkpointStore.captureIfAbsent(conversationId, userMsgId, change.path, null);
+      return;
+    }
 
     await this.checkpointStore.captureIfAbsent(
       conversationId,

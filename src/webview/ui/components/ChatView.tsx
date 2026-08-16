@@ -13,6 +13,7 @@ import { Composer } from './Composer';
 import { ThinkingIndicator } from './ThinkingIndicator';
 import { IconClock, IconPlus, IconRefresh, IconX } from './Icon';
 import { LOGO_URI } from '../logo';
+import { formatTokens, formatCost } from './SettingsView';
 
 const ASK_USER_TOOL_NAME = 'ask_user';
 
@@ -113,6 +114,23 @@ export function ChatView({ providers, onGoToProviders, username }: Props) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
+  // "Latest ref": el listener de mensajes de abajo se suscribe una sola vez
+  // (deps []), así que si leyera providerId/model/mode/running directamente
+  // vería siempre los valores del primer render. Este ref se actualiza en
+  // cada render y el listener lee de acá para tener siempre el valor actual.
+  const latestRef = useRef({ providerId, model, mode, running });
+  latestRef.current = { providerId, model, mode, running };
+
+  function sendFromEditor(text: string) {
+    const { providerId: pid, model: mdl, mode: md, running: run } = latestRef.current;
+    if (!pid || run) {
+      setInput(text);
+      return;
+    }
+    setRunning(true);
+    postToExtension({ type: 'sendMessage', providerId: pid, model: mdl.trim(), text, mode: md, attachments: undefined });
+  }
+
   useEffect(() => {
     if (!providerId && providers.length > 0) {
       setProviderId(providers[0].id);
@@ -163,6 +181,10 @@ export function ChatView({ providers, onGoToProviders, username }: Props) {
         } else if (message.running) {
           setBlocks((prev) => (prev.some((b) => b.type === 'thinking') ? prev : [...prev, { type: 'thinking', id: cryptoId() }]));
         }
+        return;
+      }
+      if (message.type === 'runFromEditor') {
+        sendFromEditor(message.text);
         return;
       }
       if (message.type !== 'chatEvent') return;
@@ -221,6 +243,7 @@ export function ChatView({ providers, onGoToProviders, username }: Props) {
   }
 
   const modelsSource: ModelsSource | undefined = providerId ? { kind: 'saved', providerId } : undefined;
+  const activeUsage = conversations.find((c) => c.id === activeId)?.usage;
 
   if (providers.length === 0) {
     return (
@@ -249,6 +272,12 @@ export function ChatView({ providers, onGoToProviders, username }: Props) {
               </option>
             ))}
           </select>
+          {activeUsage && (activeUsage.inputTokens > 0 || activeUsage.outputTokens > 0) && (
+            <span className="chat-usage-badge" title="Tokens usados en esta conversación">
+              {formatTokens(activeUsage.inputTokens)} in · {formatTokens(activeUsage.outputTokens)} out
+              {activeUsage.costUsd !== undefined ? ` · ${formatCost(activeUsage.costUsd)}` : ''}
+            </span>
+          )}
           <span className="toolbar-spacer" />
           <button className="btn-icon" onClick={newConversation} title="Nueva conversación">
             <IconPlus size={15} />

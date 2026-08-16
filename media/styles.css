@@ -559,6 +559,13 @@ label {
   flex: 1;
 }
 
+.chat-usage-badge {
+  font-size: 0.78em;
+  opacity: 0.6;
+  white-space: nowrap;
+  font-family: var(--vscode-editor-font-family, monospace);
+}
+
 .chat-log {
   flex: 1;
   overflow-y: auto;
@@ -1489,6 +1496,44 @@ label {
 
 .settings-toggle input {
   width: auto;
+}
+
+.usage-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.usage-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 8px 10px;
+  font-size: 0.88em;
+}
+
+.usage-row-name {
+  font-weight: 600;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.usage-row-tokens {
+  opacity: 0.7;
+  white-space: nowrap;
+}
+
+.usage-row-cost {
+  font-family: var(--vscode-editor-font-family, monospace);
+  white-space: nowrap;
+}
+
+.usage-row-reset {
+  padding: 2px 8px;
+  font-size: 0.9em;
 }
 
 .help-list {

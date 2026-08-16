@@ -67,8 +67,25 @@
       {
         "command": "scorpk.newChat",
         "title": "Scorpk: Nueva conversación"
+      },
+      {
+        "command": "scorpk.askAboutSelection",
+        "title": "Scorpk: Preguntar sobre selección"
+      },
+      {
+        "command": "scorpk.fixDiagnostic",
+        "title": "Scorpk: Arreglar con Scorpk"
       }
-    ]
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "scorpk.askAboutSelection",
+          "when": "editorHasSelection",
+          "group": "9_scorpk"
+        }
+      ]
+    }
   },
   "scripts": {
     "compile": "tsc --noEmit -p . && node esbuild.js",
@@ -96,5 +113,8 @@
     "@types/vscode": "^1.95.0",
     "esbuild": "^0.23.0",
     "typescript": "^5.5.4"
+  },
+  "allowScripts": {
+    "esbuild@0.23.1": true
   }
 }

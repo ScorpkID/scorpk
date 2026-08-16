@@ -2,6 +2,12 @@ import * as vscode from 'vscode';
 import { randomUUID } from 'crypto';
 import { ChatMessage } from '../agents/types';
 import { ConversationSummary } from '../shared/protocol';
+import { estimateCostUsd } from '../providers/modelPricing';
+
+interface StoredUsage {
+  inputTokens: number;
+  outputTokens: number;
+}
 
 interface StoredConversation {
   id: string;
@@ -12,6 +18,7 @@ interface StoredConversation {
   createdAt: number;
   updatedAt: number;
   history: ChatMessage[];
+  usage?: StoredUsage;
 }
 
 const CONVERSATIONS_KEY = 'scorpk.conversations';
@@ -31,8 +38,34 @@ export class ConversationStore {
 
   list(): ConversationSummary[] {
     return this.listRaw()
-      .map((c) => ({ id: c.id, title: c.title, providerId: c.providerId, model: c.model, updatedAt: c.updatedAt }))
+      .map((c) => ({
+        id: c.id,
+        title: c.title,
+        providerId: c.providerId,
+        model: c.model,
+        updatedAt: c.updatedAt,
+        usage: c.usage
+          ? {
+              inputTokens: c.usage.inputTokens,
+              outputTokens: c.usage.outputTokens,
+              costUsd: estimateCostUsd(c.model, c.usage.inputTokens, c.usage.outputTokens),
+            }
+          : undefined,
+      }))
       .sort((a, b) => b.updatedAt - a.updatedAt);
+  }
+
+  async addUsage(id: string, inputTokens: number, outputTokens: number): Promise<void> {
+    if (inputTokens <= 0 && outputTokens <= 0) return;
+    const conversations = this.listRaw();
+    const conversation = conversations.find((c) => c.id === id);
+    if (!conversation) return;
+    const current = conversation.usage ?? { inputTokens: 0, outputTokens: 0 };
+    conversation.usage = {
+      inputTokens: current.inputTokens + inputTokens,
+      outputTokens: current.outputTokens + outputTokens,
+    };
+    await this.saveRaw(conversations);
   }
 
   getHistory(id: string): ChatMessage[] | undefined {

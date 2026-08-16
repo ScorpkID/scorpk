@@ -7,6 +7,7 @@ export type AgentEvent =
   | { type: 'tool-call'; call: ToolCall; needsApproval: boolean }
   | { type: 'tool-result'; callId: string; result: string; isError: boolean }
   | { type: 'tool-rejected'; callId: string; reason?: string }
+  | { type: 'usage'; inputTokens: number; outputTokens: number }
   | { type: 'cancelled' }
   | { type: 'done' };
 
@@ -48,6 +49,8 @@ export async function* runAgent(opts: RunAgentOptions): AsyncGenerator<AgentEven
           yield { type: 'text-delta', textDelta: ev.textDelta };
         } else if (ev.type === 'tool-call') {
           pendingToolCalls.push({ id: ev.id, name: ev.name, arguments: ev.arguments });
+        } else if (ev.type === 'usage') {
+          yield { type: 'usage', inputTokens: ev.inputTokens, outputTokens: ev.outputTokens };
         }
       }
     } catch (err: any) {

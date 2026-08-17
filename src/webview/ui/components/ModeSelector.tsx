@@ -5,6 +5,10 @@ interface Props {
   value: PermissionMode;
   onChange: (mode: PermissionMode) => void;
   disabled?: boolean;
+  /** Pulsa el botón de "Auto" para que no se te pase — pensado para antes de
+   * mandar el primer mensaje de una conversación nueva, cuando es fácil
+   * olvidarse de que quedó en Manual. */
+  remindAuto?: boolean;
 }
 
 const MODES: Array<{ value: PermissionMode; label: string; icon: (size: number) => JSX.Element; title: string }> = [
@@ -34,22 +38,28 @@ const MODES: Array<{ value: PermissionMode; label: string; icon: (size: number) 
   },
 ];
 
-export function ModeSelector({ value, onChange, disabled }: Props) {
+export function ModeSelector({ value, onChange, disabled, remindAuto }: Props) {
   return (
     <div className="mode-selector" role="radiogroup" aria-label="Modo de permisos">
-      {MODES.map((m) => (
-        <button
-          key={m.value}
-          type="button"
-          title={m.title}
-          className={value === m.value ? 'mode-option active' : 'mode-option'}
-          disabled={disabled}
-          onClick={() => onChange(m.value)}
-        >
-          {m.icon(13)}
-          {m.label}
-        </button>
-      ))}
+      {MODES.map((m) => {
+        const isReminder = Boolean(remindAuto) && !disabled && m.value === 'auto' && value !== 'auto';
+        const classes = ['mode-option'];
+        if (value === m.value) classes.push('active');
+        if (isReminder) classes.push('mode-option-remind');
+        return (
+          <button
+            key={m.value}
+            type="button"
+            title={isReminder ? `${m.title} (no te olvides de activarlo)` : m.title}
+            className={classes.join(' ')}
+            disabled={disabled}
+            onClick={() => onChange(m.value)}
+          >
+            {m.icon(13)}
+            {m.label}
+          </button>
+        );
+      })}
     </div>
   );
 }

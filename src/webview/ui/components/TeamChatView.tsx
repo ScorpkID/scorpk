@@ -254,7 +254,7 @@ export function TeamChatView({ agents, onGoToTeam }: Props) {
             <IconClock size={15} />
           </button>
         </div>
-        <ModeSelector value={permissionMode} onChange={handlePermissionModeChange} disabled={running} />
+        <ModeSelector value={permissionMode} onChange={handlePermissionModeChange} disabled={running} remindAuto={blocks.length === 0} />
       </div>
 
       {showHistory ? (

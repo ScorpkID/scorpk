@@ -314,7 +314,7 @@ export function ChatView({ providers, onGoToProviders, username }: Props) {
           source={modelsSource}
           placeholder="modelo (ej: gpt-4o, claude-sonnet-4-5)"
         />
-        <ModeSelector value={mode} onChange={handleModeChange} disabled={running} />
+        <ModeSelector value={mode} onChange={handleModeChange} disabled={running} remindAuto={blocks.length === 0} />
       </div>
 
       {showHistory ? (

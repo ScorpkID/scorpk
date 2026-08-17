@@ -1153,6 +1153,32 @@ label {
   font-weight: 600;
 }
 
+.mode-option-remind {
+  opacity: 1;
+  color: var(--scorpk-accent-strong);
+  font-weight: 600;
+  animation: mode-option-remind-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes mode-option-remind-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--scorpk-accent) 45%, transparent);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--scorpk-accent) 0%, transparent);
+    transform: scale(1.06);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mode-option-remind {
+    animation: none;
+    box-shadow: 0 0 0 1px var(--scorpk-accent);
+  }
+}
+
 /* ============================================================
    History panel
    ============================================================ */

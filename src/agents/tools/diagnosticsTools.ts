@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { ToolDef } from '../types';
+import { resolveInWorkspace } from './fileTools';
 
 const MAX_LINES = 200;
 
@@ -21,9 +22,7 @@ export async function getDiagnosticsHandler(args: Record<string, unknown>): Prom
 
   let entries: [vscode.Uri, vscode.Diagnostic[]][];
   if (relPath) {
-    const folder = vscode.workspace.workspaceFolders?.[0];
-    if (!folder) throw new Error('No hay ninguna carpeta de workspace abierta.');
-    const uri = vscode.Uri.joinPath(folder.uri, relPath.replace(/^[/\\]+/, ''));
+    const uri = resolveInWorkspace(relPath);
     entries = [[uri, vscode.languages.getDiagnostics(uri)]];
   } else {
     entries = vscode.languages.getDiagnostics();

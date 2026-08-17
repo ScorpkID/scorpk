@@ -13,7 +13,7 @@ export function setLiveEditorPreviewEnabled(enabled: boolean): void {
   liveEditorPreviewEnabled = enabled;
 }
 
-function resolveInWorkspace(relativePath: string): vscode.Uri {
+export function resolveInWorkspace(relativePath: string): vscode.Uri {
   const folders = vscode.workspace.workspaceFolders;
   if (!folders || folders.length === 0) {
     throw new Error('No hay ninguna carpeta de workspace abierta.');
@@ -243,13 +243,24 @@ export async function computeFileChange(name: string, args: Record<string, unkno
 
   let before = '';
   let existedBefore = true;
+  const uri = resolveInWorkspace(relPath);
   try {
-    const uri = resolveInWorkspace(relPath);
-    const bytes = await vscode.workspace.fs.readFile(uri);
-    before = Buffer.from(bytes).toString('utf8');
+    // Preferimos el documento abierto (si lo hay) en vez de leer el disco
+    // directo: editFileHandler/writeFileHandler ya operan sobre ese mismo
+    // documento vía openTextDocument, que devuelve el buffer con cambios
+    // sin guardar si el archivo ya está abierto en un editor. Leer del
+    // disco acá hacía que el diff de aprobación y el "antes" del checkpoint
+    // no coincidieran con lo que realmente se iba a sobrescribir.
+    const doc = await vscode.workspace.openTextDocument(uri);
+    before = doc.getText();
   } catch {
-    before = '';
-    existedBefore = false;
+    try {
+      const bytes = await vscode.workspace.fs.readFile(uri);
+      before = Buffer.from(bytes).toString('utf8');
+    } catch {
+      before = '';
+      existedBefore = false;
+    }
   }
 
   let after: string;

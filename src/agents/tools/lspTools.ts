@@ -1,13 +1,6 @@
 import * as vscode from 'vscode';
 import { ToolDef } from '../types';
-
-function getWorkspaceRoot(): vscode.Uri {
-  const folders = vscode.workspace.workspaceFolders;
-  if (!folders || folders.length === 0) {
-    throw new Error('No hay ninguna carpeta de workspace abierta.');
-  }
-  return folders[0].uri;
-}
+import { resolveInWorkspace } from './fileTools';
 
 async function findSymbolPosition(uri: vscode.Uri, symbol: string): Promise<{ doc: vscode.TextDocument; position: vscode.Position }> {
   const doc = await vscode.workspace.openTextDocument(uri);
@@ -49,7 +42,7 @@ export const goToDefinitionTool: ToolDef = {
 export async function goToDefinitionHandler(args: Record<string, unknown>): Promise<string> {
   const relPath = String(args.path ?? '');
   const symbol = String(args.symbol ?? '');
-  const uri = vscode.Uri.joinPath(getWorkspaceRoot(), relPath.replace(/^[/\\]+/, ''));
+  const uri = resolveInWorkspace(relPath);
   const { position } = await findSymbolPosition(uri, symbol);
   const locations = await vscode.commands.executeCommand<(vscode.Location | vscode.LocationLink)[]>(
     'vscode.executeDefinitionProvider',
@@ -78,7 +71,7 @@ export const findReferencesTool: ToolDef = {
 export async function findReferencesHandler(args: Record<string, unknown>): Promise<string> {
   const relPath = String(args.path ?? '');
   const symbol = String(args.symbol ?? '');
-  const uri = vscode.Uri.joinPath(getWorkspaceRoot(), relPath.replace(/^[/\\]+/, ''));
+  const uri = resolveInWorkspace(relPath);
   const { position } = await findSymbolPosition(uri, symbol);
   const locations = await vscode.commands.executeCommand<vscode.Location[]>(
     'vscode.executeReferenceProvider',

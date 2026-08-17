@@ -83,6 +83,7 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
   private workspaceFilesCache: { list: string[]; expiresAt: number } | null = null;
   private activeTeamRunId: string | null = null;
   private activeTeamRunEvents: TeamStreamEvent[] = [];
+  private pendingEditorMessage: string | null = null;
   private readonly _onActivityChange = new vscode.EventEmitter<{ chatRunning: boolean; teamRunning: boolean }>();
   public readonly onActivityChange = this._onActivityChange.event;
   private readonly mcpClientManager: McpClientManager;
@@ -147,8 +148,16 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
 
   /** Llamado desde los comandos de code action del editor (ver extension.ts)
    * para inyectar una pregunta armada a partir de una selección o un error
-   * del editor, sin que el usuario tenga que copiar/pegar al panel. */
+   * del editor, sin que el usuario tenga que copiar/pegar al panel. Si el
+   * panel de Scorpk nunca se abrió en esta sesión de VS Code, `this.view`
+   * todavía no existe (resolveWebviewView es asíncrono) y el postMessage se
+   * perdería en silencio — lo dejamos pendiente y se reenvía apenas llegue
+   * el primer 'ready' del webview recién creado. */
   public runFromEditor(text: string): void {
+    if (!this.view) {
+      this.pendingEditorMessage = text;
+      return;
+    }
     this.postMessage({ type: 'runFromEditor', text });
   }
 
@@ -185,6 +194,11 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
           // webview, aunque siguiera corriendo o ya hubiera terminado del
           // lado del extension host.
           this.postMessage({ type: 'teamRunLoaded', id: this.activeTeamRunId, events: this.activeTeamRunEvents });
+        }
+        if (this.pendingEditorMessage) {
+          const text = this.pendingEditorMessage;
+          this.pendingEditorMessage = null;
+          this.postMessage({ type: 'runFromEditor', text });
         }
         // El webview puede haberse recreado desde cero (VS Code lo oculta y
         // vuelve a cargar al navegar a otra vista) mientras una ejecución
@@ -1038,17 +1052,29 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
       }
     }
 
-    if (conversationId === this.activeConversationId) {
-      const match = /^msg_(\d+)$/.exec(messageId);
-      const cutIndex = match ? Number(match[1]) : undefined;
-      if (cutIndex !== undefined) {
-        this.history = this.history.slice(0, cutIndex);
-        const summary = this.conversationStore.list().find((c) => c.id === conversationId);
-        if (summary) {
-          await this.persistActiveConversation(summary.providerId, summary.model);
-        }
-        this.postMessage({ type: 'conversationLoaded', id: conversationId, events: historyToReplayEvents(this.history) });
+    const match = /^msg_(\d+)$/.exec(messageId);
+    const cutIndex = match ? Number(match[1]) : undefined;
+    if (cutIndex === undefined) return;
+
+    // Los archivos ya se revirtieron pase lo que pase arriba — el modal le
+    // prometió al usuario que también se iban a borrar los mensajes
+    // posteriores, así que eso tiene que pasar para esta conversación sea
+    // o no la que está activa ahora mismo (antes solo pasaba si coincidía
+    // con this.activeConversationId, dejando el chat desincronizado de los
+    // archivos si el usuario había cambiado de conversación mientras
+    // esperaba la confirmación del modal).
+    const isActive = conversationId === this.activeConversationId;
+    const summary = this.conversationStore.list().find((c) => c.id === conversationId);
+    if (isActive) {
+      this.history = this.history.slice(0, cutIndex);
+      if (summary) {
+        await this.persistActiveConversation(summary.providerId, summary.model);
       }
+      this.postMessage({ type: 'conversationLoaded', id: conversationId, events: historyToReplayEvents(this.history) });
+    } else if (summary) {
+      const history = (this.conversationStore.getHistory(conversationId) ?? []).slice(0, cutIndex);
+      await this.conversationStore.saveTurn(conversationId, summary.providerId, summary.model, history);
+      this.sendConversations();
     }
   }
 

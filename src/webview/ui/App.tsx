@@ -94,7 +94,7 @@ export function App() {
           <ProviderManager providers={providers} />
         </KeepAlive>
         <KeepAlive active={view === 'settings'}>
-          <SettingsView onGoToProviders={() => setView('providers')} onGoToTeam={() => setView('team')} />
+          <SettingsView onGoToProviders={() => setView('providers')} onGoToTeam={() => setView('team')} plan={effectiveUser.plan} />
         </KeepAlive>
         <KeepAlive active={view === 'help'}>
           <HelpView />

@@ -92,9 +92,10 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.window.registerUriHandler({
       handleUri(uri: vscode.Uri) {
-        const code = new URLSearchParams(uri.query).get('code');
-        if (!code) return;
+        const params = new URLSearchParams(uri.query);
         if (uri.path === '/hf-callback') {
+          const code = params.get('code');
+          if (!code) return;
           hfAuthService
             .completeSignIn(code)
             .then(() => viewProvider.refreshHfAuthState())
@@ -103,7 +104,9 @@ export function activate(context: vscode.ExtensionContext): void {
             });
           return;
         }
-        authService.completeOAuthSignIn(code).catch((err: any) => {
+        const handoff = params.get('handoff');
+        if (!handoff) return;
+        authService.completeWebSignIn(handoff).catch((err: any) => {
           vscode.window.showErrorMessage(`Scorpk: no se pudo completar el login (${err?.message ?? err}).`);
         });
       },

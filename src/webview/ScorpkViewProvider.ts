@@ -75,6 +75,7 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
   private readonly pendingAskUserAnswers = new Map<string, (answer: string) => void>();
   private running = false;
   private teamRunning = false;
+  private currentPlan: 'free' | 'pro' = 'free';
   private activeChatRunController: AbortController | null = null;
   private activeTeamRunController: AbortController | null = null;
   private currentAssistantId: string | null = null;
@@ -112,6 +113,7 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
       this.teamHistories.set(agentId, history);
     }
     this.authService.onAuthStateChange((user) => {
+      this.currentPlan = user?.plan ?? 'free';
       this.postMessage({ type: 'authState', user });
     });
   }
@@ -336,24 +338,9 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
       case 'authGetState':
         await this.sendAuthState();
         break;
-      case 'authSignInWithPassword': {
-        const result = await this.authService.signInWithPassword(message.email, message.password);
-        if (!result.ok) this.postMessage({ type: 'authError', message: result.message });
-        break;
-      }
-      case 'authSignUp': {
-        const result = await this.authService.signUp(message.email, message.password);
-        if (!result.ok) {
-          this.postMessage({ type: 'authError', message: result.message });
-        } else if (result.needsConfirmation) {
-          this.postMessage({ type: 'authInfo', message: 'Te enviamos un correo para confirmar tu cuenta.' });
-        }
-        break;
-      }
-      case 'authSignInWithOAuth': {
+      case 'authSignInWeb': {
         try {
-          const url = await this.authService.beginOAuthSignIn(message.provider);
-          await vscode.env.openExternal(vscode.Uri.parse(url));
+          await vscode.env.openExternal(vscode.Uri.parse(this.authService.beginWebSignIn()));
         } catch (err: any) {
           this.postMessage({ type: 'authError', message: err?.message ?? String(err) });
         }
@@ -479,6 +466,7 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
 
   private async sendAuthState(): Promise<void> {
     const user: AuthUser | null = await this.authService.getUser();
+    this.currentPlan = user?.plan ?? 'free';
     this.postMessage({ type: 'authState', user });
   }
 
@@ -603,7 +591,7 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
   }
 
   private async teamDeps(mode: PermissionMode, signal: AbortSignal): Promise<TeamRunDeps> {
-    const mcp = await this.mcpClientManager.getTools();
+    const mcp = this.currentPlan === 'pro' ? await this.mcpClientManager.getTools() : { toolDefs: [], handlers: {} };
     return {
       getAgentClient: (agent) => this.getAgentClient(agent),
       tools: [...allTools, ...mcp.toolDefs],
@@ -619,6 +607,10 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
   private async runTeam(task: string, mode: PermissionMode, attachments?: AttachmentRef[]): Promise<void> {
     if (this.teamRunning) {
       this.postMessage({ type: 'error', message: 'Ya hay una tarea de equipo en curso.' });
+      return;
+    }
+    if (this.currentPlan !== 'pro') {
+      this.postMessage({ type: 'error', message: 'Modo equipo es parte de Scorpk Pro. Mirá los planes en scorpk.tech/pricing.' });
       return;
     }
     if (attachments && attachments.length > 0) {
@@ -660,6 +652,10 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
   private async sendToAgent(agentId: string, text: string, mode: PermissionMode, attachments?: AttachmentRef[]): Promise<void> {
     if (this.teamRunning) {
       this.postMessage({ type: 'error', message: 'Ya hay una tarea de equipo en curso.' });
+      return;
+    }
+    if (this.currentPlan !== 'pro') {
+      this.postMessage({ type: 'error', message: 'Modo equipo es parte de Scorpk Pro. Mirá los planes en scorpk.tech/pricing.' });
       return;
     }
     const agent = this.teamStore.get(agentId);
@@ -840,7 +836,7 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
 
     try {
       const projectInstructions = await readProjectInstructions();
-      const mcp = await this.mcpClientManager.getTools();
+      const mcp = this.currentPlan === 'pro' ? await this.mcpClientManager.getTools() : { toolDefs: [], handlers: {} };
       const gen = runAgent({
         client,
         model,

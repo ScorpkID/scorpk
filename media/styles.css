@@ -385,6 +385,26 @@ label {
   font-weight: 600;
 }
 
+.plan-badge {
+  display: inline-block;
+  font-size: 0.76em;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 10px;
+  vertical-align: middle;
+  background: color-mix(in srgb, var(--vscode-foreground) 12%, transparent);
+  color: var(--vscode-descriptionForeground);
+}
+
+.plan-badge-pro {
+  background: color-mix(in srgb, var(--scorpk-accent) 22%, transparent);
+  color: var(--scorpk-accent);
+}
+
+.nav-item-badge {
+  margin-left: auto;
+}
+
 .oauth-buttons {
   display: flex;
   flex-direction: column;

@@ -129,6 +129,7 @@ export class HuggingFaceAuthService {
         name: info.name || info.preferred_username || 'Usuario de Hugging Face',
         avatarUrl: info.picture ?? null,
         provider: 'huggingface',
+        plan: 'free',
       };
       this.cachedUser = user;
       return user;

@@ -8,3 +8,7 @@ export const SUPABASE_ANON_KEY =
 // Tiene que coincidir exactamente con "publisher.name" de package.json —
 // VS Code enruta la URI de vuelta a la extensión en base a eso.
 export const AUTH_REDIRECT_URL = 'vscode://ScorpkDev.scorpk-agent/auth-callback';
+
+// El login pasa por acá: la extensión abre el navegador a
+// `${SCORPK_WEB_URL}/login?from=vscode` y el sitio hace el resto.
+export const SCORPK_WEB_URL = 'https://scorpk.tech';

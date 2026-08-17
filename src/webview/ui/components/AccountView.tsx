@@ -7,6 +7,7 @@ interface Props {
 }
 
 export function AccountView({ user }: Props) {
+  const isPro = user.plan === 'pro';
   return (
     <div className="view">
       <ViewHeader title="Cuenta" subtitle="Tu sesión en Scorpk" />
@@ -18,11 +19,21 @@ export function AccountView({ user }: Props) {
             <span className="account-avatar account-avatar-fallback">{user.name.charAt(0).toUpperCase()}</span>
           )}
           <div>
-            <div className="account-name">{user.name}</div>
+            <div className="account-name">
+              {user.name} <span className={`plan-badge ${isPro ? 'plan-badge-pro' : ''}`}>{isPro ? 'Pro' : 'Free'}</span>
+            </div>
             {user.email && <div className="muted">{user.email}</div>}
             <div className="muted">Conectado con {providerLabel(user.provider)}</div>
           </div>
         </div>
+        {!isPro && (
+          <button
+            className="btn-primary"
+            onClick={() => postToExtension({ type: 'openExternalUrl', url: 'https://scorpk.tech/pricing' })}
+          >
+            Pasar a Pro
+          </button>
+        )}
         <button
           className="btn-ghost"
           onClick={() => postToExtension({ type: user.provider === 'huggingface' ? 'hfSignOut' : 'authSignOut' })}

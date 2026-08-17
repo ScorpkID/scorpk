@@ -22,6 +22,7 @@ const SECONDARY_ITEMS: Array<{ id: ViewId; label: string; icon: (size: number) =
 ];
 
 export function Sidebar({ active, onSelect, logoUri, user }: Props) {
+  const isPro = user.plan === 'pro';
   return (
     <nav className="sidebar">
       <div className="sidebar-brand">
@@ -41,6 +42,7 @@ export function Sidebar({ active, onSelect, logoUri, user }: Props) {
           >
             {item.icon(16)}
             {item.label}
+            {item.id === 'team' && !isPro && <span className="plan-badge plan-badge-pro nav-item-badge">Pro</span>}
           </button>
         ))}
       </div>

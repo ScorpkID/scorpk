@@ -135,6 +135,7 @@ export interface AuthUser {
   name: string;
   avatarUrl: string | null;
   provider: string;
+  plan: 'free' | 'pro';
 }
 
 export type WebviewToExtensionMessage =
@@ -167,9 +168,7 @@ export type WebviewToExtensionMessage =
   | { type: 'deleteTeamRun'; id: string }
   | { type: 'pickFile'; requestId: string }
   | { type: 'authGetState' }
-  | { type: 'authSignInWithPassword'; email: string; password: string }
-  | { type: 'authSignUp'; email: string; password: string }
-  | { type: 'authSignInWithOAuth'; provider: 'github' | 'google' }
+  | { type: 'authSignInWeb' }
   | { type: 'authSignOut' }
   | { type: 'confirmAutoMode'; requestId: string }
   | { type: 'cancelRun'; scope: 'chat' | 'team' }

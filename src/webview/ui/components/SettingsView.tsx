@@ -9,11 +9,12 @@ import { UsageTotals } from '../../../shared/protocol';
 interface Props {
   onGoToProviders: () => void;
   onGoToTeam: () => void;
+  plan: 'free' | 'pro';
 }
 
 type UsageByProvider = Record<string, UsageTotals & { providerName: string }>;
 
-export function SettingsView({ onGoToProviders, onGoToTeam }: Props) {
+export function SettingsView({ onGoToProviders, onGoToTeam, plan }: Props) {
   const [liveEditorPreview, setLiveEditorPreview] = useState(true);
   const [usage, setUsage] = useState<UsageByProvider>({});
 
@@ -90,10 +91,12 @@ export function SettingsView({ onGoToProviders, onGoToTeam }: Props) {
         </section>
 
         <section className="settings-section">
-          <div className="section-heading">Servidores MCP</div>
+          <div className="section-heading">
+            Servidores MCP {plan !== 'pro' && <span className="plan-badge plan-badge-pro">Pro</span>}
+          </div>
           <p className="muted">
             Conectá servidores MCP (Model Context Protocol) locales — sus herramientas se suman automáticamente a las
-            del agente.
+            del agente. {plan !== 'pro' && 'Configuralos ya, pero solo se usan en una corrida con el plan Pro.'}
           </p>
           <McpManager />
         </section>

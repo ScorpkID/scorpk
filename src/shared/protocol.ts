@@ -112,6 +112,16 @@ export interface McpServerConfig {
 
 export type NewMcpServerInput = Omit<McpServerConfig, 'id'>;
 
+export interface PromptTemplate {
+  id: string;
+  trigger: string;
+  label: string;
+  expansion: string;
+  attachActiveFile: boolean;
+}
+
+export type NewPromptTemplateInput = Omit<PromptTemplate, 'id'>;
+
 export interface ActiveSelectionInfo {
   path: string;
   text: string;
@@ -178,7 +188,10 @@ export type WebviewToExtensionMessage =
   | { type: 'removeMcpServer'; id: string }
   | { type: 'detectMcpTools'; id: string }
   | { type: 'listUsage' }
-  | { type: 'resetUsage'; providerId: string };
+  | { type: 'resetUsage'; providerId: string }
+  | { type: 'listPromptTemplates' }
+  | { type: 'addPromptTemplate'; template: NewPromptTemplateInput }
+  | { type: 'removePromptTemplate'; id: string };
 
 export type ExtensionToWebviewMessage =
   | { type: 'providers'; providers: ProviderConfig[] }
@@ -207,4 +220,5 @@ export type ExtensionToWebviewMessage =
   | { type: 'mcpServers'; servers: McpServerConfig[] }
   | { type: 'mcpDetectResult'; id: string; ok: boolean; message: string; toolNames: string[] }
   | { type: 'runFromEditor'; text: string }
-  | { type: 'usageState'; totals: Record<string, UsageTotals & { providerName: string }> };
+  | { type: 'usageState'; totals: Record<string, UsageTotals & { providerName: string }> }
+  | { type: 'promptTemplates'; templates: PromptTemplate[] };

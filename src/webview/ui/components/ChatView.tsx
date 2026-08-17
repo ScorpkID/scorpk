@@ -34,6 +34,21 @@ function withoutThinking(blocks: Block[]): Block[] {
   return blocks.filter((b) => b.type !== 'thinking');
 }
 
+function isPendingApprovalTool(b: Block): b is Extract<Block, { type: 'tool' }> {
+  return b.type === 'tool' && b.status === 'pending-approval';
+}
+
+/** IDs de la corrida de tool calls pendientes de aprobación que arranca en
+ * `startIdx` — se muestran juntas con una barra de "Aprobar todo" cuando
+ * agentRuntime.ts las agrupó en un lote (ver BATCHABLE_FILE_TOOLS ahí). */
+function collectBatchCallIds(blocks: Block[], startIdx: number): string[] {
+  const ids: string[] = [];
+  for (let i = startIdx; i < blocks.length && isPendingApprovalTool(blocks[i]); i++) {
+    ids.push((blocks[i] as Extract<Block, { type: 'tool' }>).callId);
+  }
+  return ids;
+}
+
 export function applyChatEvent(blocks: Block[], ev: ChatStreamEvent): Block[] {
   switch (ev.kind) {
     case 'user-message':
@@ -220,6 +235,12 @@ export function ChatView({ providers, onGoToProviders, username }: Props) {
     postToExtension({ type: 'cancelRun', scope: 'chat' });
   }
 
+  function approveBatch(callIds: string[], approved: boolean) {
+    for (const callId of callIds) {
+      postToExtension({ type: 'approveTool', callId, approved });
+    }
+  }
+
   function toggleHistory() {
     const next = !showHistory;
     setShowHistory(next);
@@ -316,7 +337,23 @@ export function ChatView({ providers, onGoToProviders, username }: Props) {
                 subtitle="¿En qué puedo ayudarte hoy?"
               />
             )}
-            {blocks.map((b) => {
+            {blocks.map((b, idx) => {
+              const prevIsPending = idx > 0 && isPendingApprovalTool(blocks[idx - 1]);
+              const batchIds = isPendingApprovalTool(b) && !prevIsPending ? collectBatchCallIds(blocks, idx) : [];
+              const batchBar =
+                batchIds.length >= 2 ? (
+                  <div className="tool-batch-bar" key={`batch-${b.type === 'tool' ? b.callId : idx}`}>
+                    <span>{batchIds.length} cambios propuestos juntos</span>
+                    <span className="toolbar-spacer" />
+                    <button type="button" className="btn-ghost" onClick={() => approveBatch(batchIds, false)}>
+                      Rechazar todo
+                    </button>
+                    <button type="button" className="btn-primary" onClick={() => approveBatch(batchIds, true)}>
+                      Aprobar todo ({batchIds.length})
+                    </button>
+                  </div>
+                ) : null;
+
               if (b.type === 'user') {
                 return (
                   <div key={b.id} className="msg-row role-user">
@@ -373,7 +410,12 @@ export function ChatView({ providers, onGoToProviders, username }: Props) {
                 );
               }
               if (b.type === 'tool') {
-                return <ToolCallLog key={b.callId} block={b} />;
+                return (
+                  <div key={b.callId}>
+                    {batchBar}
+                    <ToolCallLog block={b} />
+                  </div>
+                );
               }
               return (
                 <div key={b.id} className="msg-row role-error">

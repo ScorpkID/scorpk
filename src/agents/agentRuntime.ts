@@ -30,6 +30,18 @@ export interface RunAgentOptions {
 
 const MAX_TURNS = 12;
 
+// Tools de archivo que se pueden previsualizar/aprobar juntas en un lote
+// (ver ChatView.tsx, barra de "Aprobar todo"). Deliberadamente no incluye
+// run_terminal_command/git_commit/etc — esas siguen una por una.
+const BATCHABLE_FILE_TOOLS = new Set(['write_file', 'edit_file', 'delete_file', 'move_file']);
+
+function callPath(call: ToolCall): string | undefined {
+  const args = call.arguments;
+  if (typeof args.path === 'string') return args.path;
+  if (typeof args.from === 'string') return args.from; // move_file
+  return undefined;
+}
+
 export async function* runAgent(opts: RunAgentOptions): AsyncGenerator<AgentEvent, void, unknown> {
   const { client, model, system, history, tools, toolHandlers, requestApproval, askUser, signal } = opts;
 
@@ -72,11 +84,73 @@ export async function* runAgent(opts: RunAgentOptions): AsyncGenerator<AgentEven
       return;
     }
 
-    for (const call of pendingToolCalls) {
+    const runApprovedCall = async (call: ToolCall): Promise<{ result: string; isError: boolean }> => {
+      try {
+        if (call.name === ASK_USER_TOOL_NAME && askUser) {
+          const question = String(call.arguments.question ?? '');
+          const options = Array.isArray(call.arguments.options) ? call.arguments.options.map(String) : [];
+          return { result: await askUser(call.id, question, options), isError: false };
+        }
+        const handler = toolHandlers[call.name];
+        if (!handler) return { result: `Tool desconocida: ${call.name}`, isError: true };
+        return { result: await handler(call.arguments), isError: false };
+      } catch (err: any) {
+        return { result: `Error: ${err?.message ?? String(err)}`, isError: true };
+      }
+    };
+
+    let i = 0;
+    while (i < pendingToolCalls.length) {
       if (signal?.aborted) {
         yield { type: 'cancelled' };
         return;
       }
+
+      // Arma un lote de llamadas consecutivas de archivo, con aprobación
+      // requerida, sobre paths distintos entre sí — se muestran todas juntas
+      // para revisión antes de ejecutar ninguna. Cualquier otra tool (o un
+      // path repetido) corta el lote ahí, sin cambiar su comportamiento.
+      const batch: ToolCall[] = [];
+      const seenPaths = new Set<string>();
+      let j = i;
+      while (j < pendingToolCalls.length) {
+        const call = pendingToolCalls[j];
+        const toolDef = tools.find((t) => t.name === call.name);
+        const needsApproval = toolDef?.requiresApproval ?? true;
+        if (!needsApproval || !BATCHABLE_FILE_TOOLS.has(call.name)) break;
+        const path = callPath(call);
+        if (!path || seenPaths.has(path)) break;
+        seenPaths.add(path);
+        batch.push(call);
+        j++;
+      }
+
+      if (batch.length > 0) {
+        for (const call of batch) {
+          yield { type: 'tool-call', call, needsApproval: true };
+        }
+        for (const call of batch) {
+          if (signal?.aborted) {
+            yield { type: 'cancelled' };
+            return;
+          }
+          const { approved, reason } = await requestApproval(call);
+          if (!approved) {
+            const rejectionMessage = reason ?? 'Rechazado por el usuario.';
+            history.push({ role: 'tool', toolCallId: call.id, name: call.name, content: rejectionMessage });
+            yield { type: 'tool-rejected', callId: call.id, reason };
+            continue;
+          }
+          const { result, isError } = await runApprovedCall(call);
+          history.push({ role: 'tool', toolCallId: call.id, name: call.name, content: result });
+          yield { type: 'tool-result', callId: call.id, result, isError };
+        }
+        i = j;
+        continue;
+      }
+
+      const call = pendingToolCalls[i];
+      i++;
 
       const toolDef = tools.find((t) => t.name === call.name);
       const needsApproval = toolDef?.requiresApproval ?? true;
@@ -90,23 +164,7 @@ export async function* runAgent(opts: RunAgentOptions): AsyncGenerator<AgentEven
         continue;
       }
 
-      let result: string;
-      let isError = false;
-      try {
-        if (call.name === ASK_USER_TOOL_NAME && askUser) {
-          const question = String(call.arguments.question ?? '');
-          const options = Array.isArray(call.arguments.options) ? call.arguments.options.map(String) : [];
-          result = await askUser(call.id, question, options);
-        } else {
-          const handler = toolHandlers[call.name];
-          result = handler ? await handler(call.arguments) : `Tool desconocida: ${call.name}`;
-          if (!handler) isError = true;
-        }
-      } catch (err: any) {
-        result = `Error: ${err?.message ?? String(err)}`;
-        isError = true;
-      }
-
+      const { result, isError } = await runApprovedCall(call);
       history.push({ role: 'tool', toolCallId: call.id, name: call.name, content: result });
       yield { type: 'tool-result', callId: call.id, result, isError };
     }

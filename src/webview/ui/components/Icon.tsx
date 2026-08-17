@@ -346,6 +346,26 @@ export function IconArrowRight(props: IconProps) {
   );
 }
 
+export function IconTarget(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <circle cx="12" cy="12" r="8" />
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
+    </svg>
+  );
+}
+
+export function IconLink(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M9.5 14.5l5-5" />
+      <path d="M11 6.5l1-1a3.5 3.5 0 0 1 5 5l-1 1" />
+      <path d="M13 17.5l-1 1a3.5 3.5 0 0 1-5-5l1-1" />
+    </svg>
+  );
+}
+
 export function IconLoader(props: IconProps) {
   return (
     <svg {...base(props)} className={`icon-spin ${props.className ?? ''}`}>

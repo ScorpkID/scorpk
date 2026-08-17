@@ -3,6 +3,7 @@ import { ViewHeader } from './ViewHeader';
 import { postToExtension, onExtensionMessage } from '../vscodeApi';
 import { IconSliders, IconUsers } from './Icon';
 import { McpManager } from './McpManager';
+import { PromptTemplateManager } from './PromptTemplateManager';
 import { UsageTotals } from '../../../shared/protocol';
 
 interface Props {
@@ -77,6 +78,15 @@ export function SettingsView({ onGoToProviders, onGoToTeam }: Props) {
           <button className="btn-ghost" onClick={() => postToExtension({ type: 'newConversation' })}>
             Nueva conversación de Agente
           </button>
+        </section>
+
+        <section className="settings-section">
+          <div className="section-heading">Comandos rápidos</div>
+          <p className="muted">
+            Atajos como <code>/test</code> o <code>/explicar</code> que expanden a una instrucción fija en el
+            composer, para no escribir el mismo pedido largo cada vez.
+          </p>
+          <PromptTemplateManager />
         </section>
 
         <section className="settings-section">

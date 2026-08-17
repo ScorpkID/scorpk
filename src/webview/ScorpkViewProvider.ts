@@ -32,6 +32,7 @@ import { HuggingFaceAuthService } from '../auth/huggingFaceAuthService';
 import { CheckpointStore } from '../checkpoints/checkpointStore';
 import { SettingsStore } from '../settings/settingsStore';
 import { McpServerStore } from '../mcp/mcpServerStore';
+import { PromptTemplateStore } from '../settings/promptTemplateStore';
 import { McpClientManager } from '../mcp/mcpClientManager';
 import { UsageStore } from '../usage/usageStore';
 
@@ -66,6 +67,11 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
   private activeConversationId: string | null;
   private readonly teamHistories = new Map<string, ChatMessage[]>();
   private readonly pendingApprovals = new Map<string, (approved: boolean) => void>();
+  // Cuando se aprueba/rechaza un lote de cambios de una (ver "Aprobar todo"
+  // en la UI), la decisión de una tool call puede llegar antes de que el
+  // loop del agente termine de procesar la anterior y recién ahí pida esta
+  // — se guarda acá para aplicarla apenas se pida, en vez de perderse.
+  private readonly preApprovedDecisions = new Map<string, boolean>();
   private readonly pendingAskUserAnswers = new Map<string, (answer: string) => void>();
   private running = false;
   private teamRunning = false;
@@ -77,6 +83,8 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
   private workspaceFilesCache: { list: string[]; expiresAt: number } | null = null;
   private activeTeamRunId: string | null = null;
   private activeTeamRunEvents: TeamStreamEvent[] = [];
+  private readonly _onActivityChange = new vscode.EventEmitter<{ chatRunning: boolean; teamRunning: boolean }>();
+  public readonly onActivityChange = this._onActivityChange.event;
   private readonly mcpClientManager: McpClientManager;
 
   constructor(
@@ -91,6 +99,7 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
     private readonly settingsStore: SettingsStore,
     private readonly mcpServerStore: McpServerStore,
     private readonly usageStore: UsageStore,
+    private readonly promptTemplateStore: PromptTemplateStore,
   ) {
     this.mcpClientManager = new McpClientManager(mcpServerStore);
     setLiveEditorPreviewEnabled(this.settingsStore.getLiveEditorPreview());
@@ -123,6 +132,17 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
 
   public dispose(): void {
     this.mcpClientManager.disconnectAll();
+    this._onActivityChange.dispose();
+  }
+
+  private setRunning(value: boolean): void {
+    this.running = value;
+    this._onActivityChange.fire({ chatRunning: this.running, teamRunning: this.teamRunning });
+  }
+
+  private setTeamRunning(value: boolean): void {
+    this.teamRunning = value;
+    this._onActivityChange.fire({ chatRunning: this.running, teamRunning: this.teamRunning });
   }
 
   /** Llamado desde los comandos de code action del editor (ver extension.ts)
@@ -208,6 +228,8 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
         if (resolver) {
           resolver(message.approved);
           this.pendingApprovals.delete(message.callId);
+        } else {
+          this.preApprovedDecisions.set(message.callId, message.approved);
         }
         break;
       }
@@ -407,7 +429,22 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
         await this.usageStore.reset(message.providerId);
         await this.sendUsageState();
         break;
+      case 'listPromptTemplates':
+        this.sendPromptTemplates();
+        break;
+      case 'addPromptTemplate':
+        await this.promptTemplateStore.add(message.template);
+        this.sendPromptTemplates();
+        break;
+      case 'removePromptTemplate':
+        await this.promptTemplateStore.remove(message.id);
+        this.sendPromptTemplates();
+        break;
     }
+  }
+
+  private sendPromptTemplates(): void {
+    this.postMessage({ type: 'promptTemplates', templates: this.promptTemplateStore.list() });
   }
 
   private async sendUsageState(): Promise<void> {
@@ -584,7 +621,7 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
     this.activeTeamRunId = runId;
     this.activeTeamRunEvents = events;
     this.sendTeamRuns();
-    this.teamRunning = true;
+    this.setTeamRunning(true);
     const controller = new AbortController();
     this.activeTeamRunController = controller;
     try {
@@ -599,7 +636,7 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
         }
       }
     } finally {
-      this.teamRunning = false;
+      this.setTeamRunning(false);
       this.activeTeamRunController = null;
       await this.teamConversationStore.updateRunEvents(runId, events);
       this.sendTeamRuns();
@@ -629,7 +666,7 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
     }
     const history = this.teamHistories.get(agentId)!;
 
-    this.teamRunning = true;
+    this.setTeamRunning(true);
     const controller = new AbortController();
     this.activeTeamRunController = controller;
     this.activeTeamRunId = `direct_${agentId}`;
@@ -646,7 +683,7 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
         }
       }
     } finally {
-      this.teamRunning = false;
+      this.setTeamRunning(false);
       this.activeTeamRunController = null;
       await this.persistAgentHistories();
     }
@@ -773,7 +810,7 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
       this.sendConversations();
     }
 
-    this.running = true;
+    this.setRunning(true);
     const userMsgId = userMessageId(this.history.length);
     this.postMessage({ type: 'chatEvent', event: { kind: 'user-message', id: userMsgId, text } });
     this.history.push({ role: 'user', content: composedText });
@@ -855,7 +892,7 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
     } catch (err: any) {
       this.postMessage({ type: 'chatEvent', event: { kind: 'run-error', message: err?.message ?? String(err) } });
     } finally {
-      this.running = false;
+      this.setRunning(false);
       this.activeChatRunController = null;
       this.currentAssistantId = null;
       this.currentAssistantText = '';
@@ -1016,6 +1053,11 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
   }
 
   private requestApproval(callId: string, signal?: AbortSignal): Promise<boolean> {
+    const preDecided = this.preApprovedDecisions.get(callId);
+    if (preDecided !== undefined) {
+      this.preApprovedDecisions.delete(callId);
+      return Promise.resolve(preDecided);
+    }
     return new Promise((resolve) => {
       this.pendingApprovals.set(callId, resolve);
       // Si el usuario cancela la ejecución mientras hay una aprobación

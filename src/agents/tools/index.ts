@@ -30,6 +30,8 @@ import {
 } from './gitTools';
 import { searchFilesTool, searchFilesHandler } from './searchTools';
 import { getDiagnosticsTool, getDiagnosticsHandler } from './diagnosticsTools';
+import { goToDefinitionTool, goToDefinitionHandler, findReferencesTool, findReferencesHandler } from './lspTools';
+import { fetchUrlTool, fetchUrlHandler } from './webTools';
 import { askUserTool, ASK_USER_TOOL_NAME } from './askUserTool';
 
 export type ToolHandler = (args: Record<string, unknown>) => Promise<string>;
@@ -45,6 +47,9 @@ export const allTools: ToolDef[] = [
   moveFileTool,
   searchFilesTool,
   getDiagnosticsTool,
+  goToDefinitionTool,
+  findReferencesTool,
+  fetchUrlTool,
   runTerminalCommandTool,
   gitStatusTool,
   gitDiffTool,
@@ -64,6 +69,9 @@ export const toolHandlers: Record<string, ToolHandler> = {
   move_file: moveFileHandler,
   search_files: searchFilesHandler,
   get_diagnostics: getDiagnosticsHandler,
+  go_to_definition: goToDefinitionHandler,
+  find_references: findReferencesHandler,
+  fetch_url: fetchUrlHandler,
   run_terminal_command: runTerminalCommandHandler,
   git_status: gitStatusHandler,
   git_diff: gitDiffHandler,

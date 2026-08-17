@@ -9,12 +9,14 @@ import { CheckpointStore } from './checkpoints/checkpointStore';
 import { SettingsStore } from './settings/settingsStore';
 import { McpServerStore } from './mcp/mcpServerStore';
 import { UsageStore } from './usage/usageStore';
+import { PromptTemplateStore } from './settings/promptTemplateStore';
 import { ScorpkViewProvider } from './webview/ScorpkViewProvider';
 import {
   ASK_ABOUT_SELECTION_COMMAND,
   FIX_DIAGNOSTIC_COMMAND,
   ScorpkCodeActionProvider,
 } from './editor/scorpkCodeActionProvider';
+import { StatusBarManager } from './editor/statusBarManager';
 
 export function activate(context: vscode.ExtensionContext): void {
   const providerStore = new ProviderStore(context);
@@ -27,6 +29,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const settingsStore = new SettingsStore(context);
   const mcpServerStore = new McpServerStore(context);
   const usageStore = new UsageStore(context);
+  const promptTemplateStore = new PromptTemplateStore(context);
   const viewProvider = new ScorpkViewProvider(
     context.extensionUri,
     providerStore,
@@ -39,10 +42,14 @@ export function activate(context: vscode.ExtensionContext): void {
     settingsStore,
     mcpServerStore,
     usageStore,
+    promptTemplateStore,
   );
+
+  const statusBarManager = new StatusBarManager(viewProvider);
 
   context.subscriptions.push(
     { dispose: () => viewProvider.dispose() },
+    statusBarManager,
     vscode.window.registerWebviewViewProvider(ScorpkViewProvider.viewType, viewProvider),
     vscode.commands.registerCommand('scorpk.openPanel', () => {
       vscode.commands.executeCommand('workbench.view.extension.scorpk');

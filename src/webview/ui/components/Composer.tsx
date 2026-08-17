@@ -1,9 +1,10 @@
 import { FormEvent, KeyboardEvent, RefObject, useRef, useState } from 'react';
-import { AttachmentRef } from '../../../shared/protocol';
-import { requestFilePick } from '../vscodeApi';
+import { AttachmentRef, PromptTemplate } from '../../../shared/protocol';
+import { requestFilePick, requestActiveSelection } from '../vscodeApi';
 import { IconCode, IconPaperclip, IconSend, IconX } from './Icon';
 import { ThinkingIndicator } from './ThinkingIndicator';
 import { MentionPicker, MentionPick } from './MentionPicker';
+import { SlashCommandPicker } from './SlashCommandPicker';
 import { AttachmentChips } from './AttachmentChips';
 
 interface Props {
@@ -20,9 +21,10 @@ interface Props {
 export function Composer({ value, onChange, onSend, onCancel, running, placeholder, attachments, onAttachmentsChange }: Props) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [mention, setMention] = useState<{ start: number; query: string } | null>(null);
+  const [slash, setSlash] = useState<{ query: string } | null>(null);
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
-    if (mention) return; // el picker maneja sus propias teclas (flechas/Enter/Escape)
+    if (mention || slash) return; // el picker maneja sus propias teclas (flechas/Enter/Escape)
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       onSend();
@@ -34,6 +36,16 @@ export function Composer({ value, onChange, onSend, onCancel, running, placehold
     const el = textareaRef.current;
     const caret = el?.selectionStart ?? next.length;
     const uptoCaret = next.slice(0, caret);
+
+    // "/" solo cuenta como comando rápido si es el primer carácter del
+    // mensaje (no en medio de una frase).
+    if (next[0] === '/' && !/\s/.test(uptoCaret)) {
+      setSlash({ query: uptoCaret.slice(1) });
+      setMention(null);
+      return;
+    }
+    setSlash(null);
+
     const atIndex = uptoCaret.lastIndexOf('@');
     if (atIndex === -1) {
       setMention(null);
@@ -50,6 +62,28 @@ export function Composer({ value, onChange, onSend, onCancel, running, placehold
   function closeMention() {
     setMention(null);
     textareaRef.current?.focus();
+  }
+
+  function closeSlash() {
+    setSlash(null);
+    textareaRef.current?.focus();
+  }
+
+  async function pickSlash(template: PromptTemplate) {
+    let next = template.expansion;
+    if (template.attachActiveFile) {
+      const selection = await requestActiveSelection();
+      if (selection) {
+        next += `\n\n\`\`\`\n${selection.text}\n\`\`\``;
+      }
+    }
+    onChange(next);
+    setSlash(null);
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      el?.focus();
+      el?.setSelectionRange(next.length, next.length);
+    });
   }
 
   function pickMention(pick: MentionPick) {
@@ -102,6 +136,7 @@ export function Composer({ value, onChange, onSend, onCancel, running, placehold
   return (
     <div className="composer">
       <AttachmentChips items={attachments} onRemove={removeAttachment} />
+      {slash && <SlashCommandPicker query={slash.query} onPick={pickSlash} onClose={closeSlash} />}
       {mention && <MentionPicker query={mention.query} onPick={pickMention} onClose={closeMention} />}
       <textarea
         ref={textareaRef}
@@ -121,7 +156,7 @@ export function Composer({ value, onChange, onSend, onCancel, running, placehold
             <IconCode size={15} />
           </button>
           <span className="composer-hint">
-            {running ? <ThinkingIndicator /> : 'Enter para enviar · Shift+Enter nueva línea · @ para adjuntar'}
+            {running ? <ThinkingIndicator /> : 'Enter para enviar · Shift+Enter nueva línea · @ para adjuntar · / para comandos'}
           </span>
         </div>
         {running && onCancel ? (

@@ -860,6 +860,18 @@ label {
   font-size: 0.94em;
 }
 
+.tool-batch-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px var(--space-4) 0;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--scorpk-accent) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--scorpk-accent) 25%, transparent);
+  font-size: 0.86em;
+}
+
 .tool-call-result,
 .tool-call-result-error {
   margin: 7px 0 0;

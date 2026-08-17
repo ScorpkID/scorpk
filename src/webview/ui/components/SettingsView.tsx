@@ -4,6 +4,7 @@ import { postToExtension, onExtensionMessage } from '../vscodeApi';
 import { IconSliders, IconUsers } from './Icon';
 import { McpManager } from './McpManager';
 import { PromptTemplateManager } from './PromptTemplateManager';
+import { SkillManager } from './SkillManager';
 import { UsageTotals } from '../../../shared/protocol';
 
 interface Props {
@@ -88,6 +89,16 @@ export function SettingsView({ onGoToProviders, onGoToTeam, plan }: Props) {
             composer, para no escribir el mismo pedido largo cada vez.
           </p>
           <PromptTemplateManager />
+        </section>
+
+        <section className="settings-section">
+          <div className="section-heading">Skills</div>
+          <p className="muted">
+            A diferencia de los comandos rápidos, una skill la dispara el propio agente cuando decide que tu pedido
+            calza con su descripción — no hace falta invocarla vos. Se editan como archivo (SKILL.md), igual que
+            SCORPK.md.
+          </p>
+          <SkillManager />
         </section>
 
         <section className="settings-section">

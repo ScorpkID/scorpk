@@ -6,6 +6,7 @@ import { ToolHandler } from '../agents/tools';
 import { runAgent, ApprovalResult } from '../agents/agentRuntime';
 import { permissionModeSystemSuffix } from '../agents/permissionMode';
 import { withProjectInstructions } from '../agents/projectInstructions';
+import { SkillSummary, withSkillsPrompt } from '../skills/skillLoader';
 
 export interface TeamRunDeps {
   getAgentClient: (agent: AgentDefinition) => Promise<{ client: LLMClient; model: string }>;
@@ -16,6 +17,7 @@ export interface TeamRunDeps {
   mode: PermissionMode;
   signal?: AbortSignal;
   projectInstructions?: string;
+  skills?: SkillSummary[];
 }
 
 export async function* runTeamSequential(
@@ -121,7 +123,9 @@ async function* runAgentTurn(
   for await (const ev of runAgent({
     client,
     model,
-    system: withProjectInstructions(agent.systemPrompt, deps.projectInstructions) + permissionModeSystemSuffix(deps.mode),
+    system:
+      withSkillsPrompt(withProjectInstructions(agent.systemPrompt, deps.projectInstructions), deps.skills ?? []) +
+      permissionModeSystemSuffix(deps.mode),
     history,
     tools: deps.tools,
     toolHandlers: deps.toolHandlers,

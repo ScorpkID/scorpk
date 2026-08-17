@@ -22,6 +22,7 @@ import { runAgent, ApprovalResult } from '../agents/agentRuntime';
 import { resolveApproval, permissionModeSystemSuffix } from '../agents/permissionMode';
 import { historyToReplayEvents, userMessageId } from '../agents/historyReplay';
 import { readProjectInstructions, withProjectInstructions } from '../agents/projectInstructions';
+import { listSkills, scaffoldSkill, withSkillsPrompt } from '../skills/skillLoader';
 import { listOpenAICompatibleModels, listAnthropicModels, listVscodeCopilotModels } from '../providers/modelLister';
 import { TeamStore } from '../teams/teamStore';
 import { runTeamSequential, runDirectAgentTurn, TeamRunDeps } from '../teams/teamRuntime';
@@ -47,6 +48,9 @@ reescritura completa. Si old_string no matchea de forma única, agregá más lí
 de rendirte o reescribir todo el archivo como atajo.
 Para encontrar dónde está algo en un repo grande, usá search_files en vez de leer archivos uno por uno con
 read_file. Antes de asumir que algo compila o pasa el linter, podés chequear get_diagnostics en vez de asumir.
+Si más abajo aparece una lista de "Skills disponibles", son instrucciones empaquetadas para tareas específicas —
+cuando la tarea del usuario calce con la descripción de una, usá use_skill con su nombre exacto para cargarlas
+antes de arrancar, en vez de improvisar un enfoque propio.
 Si hay una decisión concreta que le corresponde al usuario (elegir entre alternativas, confirmar un enfoque cuando
 hay más de uno razonable), usa la herramienta ask_user en vez de preguntar en texto plano — no abuses de ella.
 No te quedes en la versión más mínima o genérica de lo que se te pide. Cuando generes una interfaz o cualquier
@@ -442,11 +446,31 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
         await this.promptTemplateStore.remove(message.id);
         this.sendPromptTemplates();
         break;
+      case 'listSkills':
+        await this.sendSkills();
+        break;
+      case 'createSkill': {
+        try {
+          const uri = await scaffoldSkill(message.name, message.scope);
+          await vscode.window.showTextDocument(uri);
+          await this.sendSkills();
+        } catch (err: any) {
+          this.postMessage({ type: 'error', message: err?.message ?? String(err) });
+        }
+        break;
+      }
+      case 'openSkill':
+        await vscode.window.showTextDocument(vscode.Uri.file(message.path));
+        break;
     }
   }
 
   private sendPromptTemplates(): void {
     this.postMessage({ type: 'promptTemplates', templates: this.promptTemplateStore.list() });
+  }
+
+  private async sendSkills(): Promise<void> {
+    this.postMessage({ type: 'skills', skills: await listSkills() });
   }
 
   private async sendUsageState(): Promise<void> {
@@ -603,6 +627,7 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
       mode,
       signal,
       projectInstructions: await readProjectInstructions(),
+      skills: await listSkills(),
     };
   }
 
@@ -839,11 +864,14 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
 
     try {
       const projectInstructions = await readProjectInstructions();
+      const skills = await listSkills();
       const mcp = this.currentPlan === 'pro' ? await this.mcpClientManager.getTools() : { toolDefs: [], handlers: {} };
       const gen = runAgent({
         client,
         model,
-        system: withProjectInstructions(SYSTEM_PROMPT, projectInstructions) + permissionModeSystemSuffix(mode),
+        system:
+          withSkillsPrompt(withProjectInstructions(SYSTEM_PROMPT, projectInstructions), skills) +
+          permissionModeSystemSuffix(mode),
         history: this.history,
         tools: [...allTools, ...mcp.toolDefs],
         toolHandlers: { ...toolHandlers, ...mcp.handlers },

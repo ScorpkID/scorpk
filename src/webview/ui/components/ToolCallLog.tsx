@@ -16,6 +16,7 @@ import {
   IconTerminal,
   IconTrash,
   IconWrench,
+  IconZap,
 } from './Icon';
 
 export interface ToolBlock {
@@ -42,6 +43,7 @@ const TOOL_ICONS: Record<string, (size: number) => JSX.Element> = {
   go_to_definition: (s) => <IconTarget size={s} />,
   find_references: (s) => <IconTarget size={s} />,
   fetch_url: (s) => <IconLink size={s} />,
+  use_skill: (s) => <IconZap size={s} />,
   run_terminal_command: (s) => <IconTerminal size={s} />,
   git_status: (s) => <IconGitBranch size={s} />,
   git_diff: (s) => <IconGitBranch size={s} />,
@@ -61,6 +63,7 @@ const TOOL_LABELS: Record<string, string> = {
   go_to_definition: 'Ir a definición',
   find_references: 'Referencias',
   fetch_url: 'Traer URL',
+  use_skill: 'Skill',
   run_terminal_command: 'Terminal',
   git_status: 'Git status',
   git_diff: 'Git diff',

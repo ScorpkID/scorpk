@@ -122,6 +122,14 @@ export interface PromptTemplate {
 
 export type NewPromptTemplateInput = Omit<PromptTemplate, 'id'>;
 
+export interface SkillSummary {
+  name: string;
+  description: string;
+  scope: 'project' | 'personal';
+  /** Ruta absoluta al SKILL.md, para abrirlo en el editor. */
+  path: string;
+}
+
 export interface ActiveSelectionInfo {
   path: string;
   text: string;
@@ -190,7 +198,10 @@ export type WebviewToExtensionMessage =
   | { type: 'resetUsage'; providerId: string }
   | { type: 'listPromptTemplates' }
   | { type: 'addPromptTemplate'; template: NewPromptTemplateInput }
-  | { type: 'removePromptTemplate'; id: string };
+  | { type: 'removePromptTemplate'; id: string }
+  | { type: 'listSkills' }
+  | { type: 'createSkill'; name: string; scope: 'project' | 'personal' }
+  | { type: 'openSkill'; path: string };
 
 export type ExtensionToWebviewMessage =
   | { type: 'providers'; providers: ProviderConfig[] }
@@ -220,4 +231,5 @@ export type ExtensionToWebviewMessage =
   | { type: 'mcpDetectResult'; id: string; ok: boolean; message: string; toolNames: string[] }
   | { type: 'runFromEditor'; text: string }
   | { type: 'usageState'; totals: Record<string, UsageTotals & { providerName: string }> }
-  | { type: 'promptTemplates'; templates: PromptTemplate[] };
+  | { type: 'promptTemplates'; templates: PromptTemplate[] }
+  | { type: 'skills'; skills: SkillSummary[] };

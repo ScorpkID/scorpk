@@ -23,6 +23,7 @@ function initialView(): ViewId {
 export function App() {
   const [view, setViewState] = useState<ViewId>(initialView);
   const [providers, setProviders] = useState<ProviderConfig[]>([]);
+  const [providersLoaded, setProvidersLoaded] = useState(false);
   const [agents, setAgents] = useState<AgentDefinition[]>([]);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [hfUser, setHfUser] = useState<AuthUser | null>(null);
@@ -39,6 +40,7 @@ export function App() {
     const unsubscribe = onExtensionMessage((message) => {
       if (message.type === 'providers') {
         setProviders(message.providers);
+        setProvidersLoaded(true);
       } else if (message.type === 'agents') {
         setAgents(message.agents);
       } else if (message.type === 'authState') {
@@ -85,7 +87,12 @@ export function App() {
       <Sidebar active={view} onSelect={setView} logoUri={LOGO_URI} user={effectiveUser} />
       <main className="app-content">
         <KeepAlive active={view === 'agent'}>
-          <ChatView providers={providers} onGoToProviders={() => setView('providers')} username={effectiveUser.name} />
+          <ChatView
+            providers={providers}
+            providersLoaded={providersLoaded}
+            onGoToProviders={() => setView('providers')}
+            username={effectiveUser.name}
+          />
         </KeepAlive>
         <KeepAlive active={view === 'team'}>
           <TeamTab agents={agents} providers={providers} />

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { IconLoader } from './Icon';
+import { IconScorpion } from './Icon';
 
 const THINKING_WORDS = [
   'Pensando',
@@ -41,7 +41,7 @@ export function ThinkingIndicator() {
 
   return (
     <span className="thinking-indicator">
-      <IconLoader size={12} />
+      <IconScorpion size={14} animated="active" />
       <span key={index} className="thinking-word">
         {THINKING_WORDS[index]}...
       </span>

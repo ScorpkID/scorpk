@@ -9,9 +9,10 @@ import { HistoryPanel } from './HistoryPanel';
 import { EmptyState } from './EmptyState';
 import { Composer } from './Composer';
 import { ThinkingIndicator } from './ThinkingIndicator';
-import { IconClock, IconRefresh, IconUsers, IconX } from './Icon';
+import { IconCheck, IconClock, IconRefresh, IconScorpion, IconX } from './Icon';
 
 const ASK_USER_TOOL_NAME = 'ask_user';
+const CELEBRATE_THRESHOLD_MS = 4000;
 
 interface Props {
   agents: AgentDefinition[];
@@ -123,7 +124,16 @@ export function TeamChatView({ agents, onGoToTeam }: Props) {
   const [running, setRunning] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [runs, setRuns] = useState<TeamRunSummary[]>([]);
+  const [celebrate, setCelebrate] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const runStartRef = useRef<number | null>(null);
+  const celebrateTimerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  function triggerCelebration() {
+    setCelebrate(true);
+    clearTimeout(celebrateTimerRef.current);
+    celebrateTimerRef.current = setTimeout(() => setCelebrate(false), 2200);
+  }
 
   useEffect(() => {
     if (!targetAgentId && agents.length > 0) setTargetAgentId(agents[0].id);
@@ -158,6 +168,10 @@ export function TeamChatView({ agents, onGoToTeam }: Props) {
       if (message.type !== 'teamEvent') return;
       const ev = message.event;
       setBlocks((prev) => applyTeamEvent(prev, ev));
+      if (ev.kind === 'run-done') {
+        const start = runStartRef.current;
+        if (start && Date.now() - start > CELEBRATE_THRESHOLD_MS) triggerCelebration();
+      }
       if (ev.kind === 'run-done' || ev.kind === 'run-error' || ev.kind === 'run-cancelled') setRunning(false);
     });
     postToExtension({ type: 'listTeamRuns' });
@@ -172,6 +186,7 @@ export function TeamChatView({ agents, onGoToTeam }: Props) {
     const text = input.trim();
     if (!text || running) return;
     if (mode === 'agent' && !targetAgentId) return;
+    runStartRef.current = Date.now();
     setRunning(true);
     setInput('');
     const currentAttachments = attachments.length > 0 ? attachments : undefined;
@@ -216,7 +231,7 @@ export function TeamChatView({ agents, onGoToTeam }: Props) {
   if (agents.length === 0) {
     return (
       <div className="chat-empty">
-        <p>Todavía no hay agentes configurados.</p>
+        <p>Todavía no armaste tu equipo — sin agentes no hay con quién repartir el trabajo.</p>
         <button className="btn-primary" onClick={onGoToTeam}>
           Ir a Equipo
         </button>
@@ -226,6 +241,12 @@ export function TeamChatView({ agents, onGoToTeam }: Props) {
 
   return (
     <div className="chat-view">
+      {celebrate && (
+        <div className="run-complete-badge" role="status">
+          <IconCheck size={13} />
+          Listo
+        </div>
+      )}
       <div className="agent-config">
         <div className="agent-config-row">
           <select className="model-select" value={mode} onChange={(e) => setMode(e.target.value as Mode)}>
@@ -260,7 +281,7 @@ export function TeamChatView({ agents, onGoToTeam }: Props) {
       {showHistory ? (
         <HistoryPanel
           items={runs}
-          emptyLabel="Todavía no hay ejecuciones de equipo guardadas."
+          emptyLabel="El equipo todavía no corrió nada — su primera tarea va a quedar acá."
           onSelect={(id) => postToExtension({ type: 'openTeamRun', id })}
           onRename={(id, title) => postToExtension({ type: 'renameTeamRun', id, title })}
           onDelete={(id) => postToExtension({ type: 'deleteTeamRun', id })}
@@ -269,7 +290,11 @@ export function TeamChatView({ agents, onGoToTeam }: Props) {
         <>
           <div className="chat-log">
             {blocks.length === 0 && (
-              <EmptyState icon={<IconUsers size={28} />} title="Chat del equipo" subtitle="Escribí un mensaje para el equipo..." />
+              <EmptyState
+                icon={<IconScorpion size={40} animated="idle" />}
+                title="El equipo está listo"
+                subtitle="Mandale una tarea y la reparten entre todos."
+              />
             )}
             {blocks.map((b) => {
               if (b.type === 'agent-header') {

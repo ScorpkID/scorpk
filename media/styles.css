@@ -447,10 +447,28 @@ label {
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  animation: keep-alive-fade-in 0.16s ease;
 }
 
 .keep-alive-hidden {
   display: none !important;
+}
+
+@keyframes keep-alive-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .keep-alive {
+    animation: none;
+  }
 }
 
 .view {
@@ -530,6 +548,7 @@ label {
    Chat — configuración (proveedor/modelo/modo) y log
    ============================================================ */
 .chat-view {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -634,6 +653,156 @@ label {
 .empty-state-subtitle {
   opacity: 0.6;
   font-size: 0.92em;
+}
+
+/* ============================================================
+   Mascota animada (escorpión) — cola con vida propia en vez de
+   quedar como un ícono estático
+   ============================================================ */
+.mascot-tail {
+  transform-origin: 4.2px 19px;
+}
+
+.mascot-tail-idle {
+  animation: mascot-tail-idle 3.2s ease-in-out infinite;
+}
+
+.mascot-tail-active {
+  animation: mascot-tail-active 0.85s ease-in-out infinite;
+}
+
+@keyframes mascot-tail-idle {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(-7deg);
+  }
+}
+
+@keyframes mascot-tail-active {
+  0%,
+  100% {
+    transform: rotate(-5deg);
+  }
+  50% {
+    transform: rotate(11deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mascot-tail-idle,
+  .mascot-tail-active {
+    animation: none;
+  }
+}
+
+/* ============================================================
+   Insignia de "listo" — cierre visual corto cuando termina una
+   corrida que tomó un rato, en vez de que el thinking desaparezca
+   sin más
+   ============================================================ */
+.run-complete-badge {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, #3fa66c 16%, var(--vscode-sideBar-background, #1e1e1e));
+  border: 1px solid color-mix(in srgb, #3fa66c 45%, transparent);
+  color: #3fa66c;
+  font-size: 0.82em;
+  font-weight: 600;
+  box-shadow: 0 0 14px 0 color-mix(in srgb, #3fa66c 35%, transparent);
+  pointer-events: none;
+  z-index: 5;
+  animation: run-complete-pop 2.2s ease forwards;
+}
+
+@keyframes run-complete-pop {
+  0% {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.9);
+  }
+  15% {
+    opacity: 1;
+    transform: translateY(0) scale(1.05);
+  }
+  25% {
+    transform: scale(1);
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-2px) scale(0.98);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .run-complete-badge {
+    animation: none;
+  }
+}
+
+/* ============================================================
+   Skeletons — placeholders mientras carga algo que puede tardar
+   (proveedores al abrir el panel, modelos de un proveedor lento)
+   ============================================================ */
+.skeleton-bar {
+  display: inline-block;
+  border-radius: var(--radius-md);
+  background: linear-gradient(
+    90deg,
+    var(--surface-1) 25%,
+    var(--surface-2) 50%,
+    var(--surface-1) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
+.skeleton-bar-select {
+  width: 120px;
+  height: 26px;
+}
+
+.skeleton-bar-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+}
+
+.skeleton-bar-wide {
+  width: 100%;
+  height: 30px;
+}
+
+.skeleton-bar-row {
+  width: 100%;
+  height: 16px;
+  margin-top: 6px;
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-bar {
+    animation: none;
+    background: var(--surface-2);
+  }
 }
 
 /* ============================================================
@@ -1361,6 +1530,13 @@ label {
   display: flex;
   gap: 6px;
   align-items: center;
+}
+
+.model-picker-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 2px 0;
 }
 
 .model-picker-row select {

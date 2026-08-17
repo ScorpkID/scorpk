@@ -59,6 +59,14 @@ export function ModelPicker({ value, onChange, source, placeholder }: Props) {
         </button>
       </div>
 
+      {loading && (
+        <div className="model-picker-skeleton">
+          <span className="skeleton-bar skeleton-bar-row" />
+          <span className="skeleton-bar skeleton-bar-row" />
+          <span className="skeleton-bar skeleton-bar-row" style={{ width: '70%' }} />
+        </div>
+      )}
+
       {loaded && models.length > 0 && (
         <div className="model-picker-row">
           <label className="model-picker-free">

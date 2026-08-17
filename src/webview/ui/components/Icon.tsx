@@ -232,12 +232,21 @@ export function IconSliders(props: IconProps) {
   );
 }
 
-export function IconScorpion(props: IconProps) {
+interface ScorpionProps extends IconProps {
+  /** "idle" = balanceo lento (vacíos, en reposo). "active" = movimiento más
+   * rápido y marcado (mientras el agente está trabajando). Sin esto queda
+   * estática, como antes. */
+  animated?: 'idle' | 'active';
+}
+
+export function IconScorpion({ animated, ...props }: ScorpionProps) {
   return (
-    <svg {...base(props)} strokeWidth={1.5}>
-      <path d="M4.2 19c3.6 0 6.3-1.9 6.3-4.8s-2.4-4.6-4.3-3.7" />
-      <path d="M6.2 10.5c2.5-1 3.8-3.4 2.7-5.9-1-2.2.7-4 2.8-3.6" />
-      <path d="M11.7 1l1.9.5-.7 1.9" />
+    <svg {...base(props)} strokeWidth={1.5} overflow="visible">
+      <g className={animated ? `mascot-tail mascot-tail-${animated}` : undefined}>
+        <path d="M4.2 19c3.6 0 6.3-1.9 6.3-4.8s-2.4-4.6-4.3-3.7" />
+        <path d="M6.2 10.5c2.5-1 3.8-3.4 2.7-5.9-1-2.2.7-4 2.8-3.6" />
+        <path d="M11.7 1l1.9.5-.7 1.9" />
+      </g>
       <circle cx="4.2" cy="19" r="1.5" fill="currentColor" stroke="none" />
     </svg>
   );

@@ -11,17 +11,19 @@ import { ViewHeader } from './ViewHeader';
 import { EmptyState } from './EmptyState';
 import { Composer } from './Composer';
 import { ThinkingIndicator } from './ThinkingIndicator';
-import { IconClock, IconPlus, IconRefresh, IconX } from './Icon';
-import { LOGO_URI } from '../logo';
+import { IconCheck, IconClock, IconPlus, IconRefresh, IconScorpion, IconX } from './Icon';
 import { formatTokens, formatCost } from './SettingsView';
 
 const ASK_USER_TOOL_NAME = 'ask_user';
 
 interface Props {
   providers: ProviderConfig[];
+  providersLoaded: boolean;
   onGoToProviders: () => void;
   username: string;
 }
+
+const CELEBRATE_THRESHOLD_MS = 4000;
 
 export type Block =
   | { type: 'user'; id: string; text: string }
@@ -116,7 +118,7 @@ export function applyChatEvent(blocks: Block[], ev: ChatStreamEvent): Block[] {
   }
 }
 
-export function ChatView({ providers, onGoToProviders, username }: Props) {
+export function ChatView({ providers, providersLoaded, onGoToProviders, username }: Props) {
   const [providerId, setProviderId] = useState<string>('');
   const [model, setModel] = useState<string>('');
   const [mode, setMode] = useState<PermissionMode>('manual');
@@ -127,7 +129,16 @@ export function ChatView({ providers, onGoToProviders, username }: Props) {
   const [showHistory, setShowHistory] = useState(false);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [celebrate, setCelebrate] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const runStartRef = useRef<number | null>(null);
+  const celebrateTimerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  function triggerCelebration() {
+    setCelebrate(true);
+    clearTimeout(celebrateTimerRef.current);
+    celebrateTimerRef.current = setTimeout(() => setCelebrate(false), 2200);
+  }
 
   // "Latest ref": el listener de mensajes de abajo se suscribe una sola vez
   // (deps []), así que si leyera providerId/model/mode/running directamente
@@ -142,6 +153,7 @@ export function ChatView({ providers, onGoToProviders, username }: Props) {
       setInput(text);
       return;
     }
+    runStartRef.current = Date.now();
     setRunning(true);
     postToExtension({ type: 'sendMessage', providerId: pid, model: mdl.trim(), text, mode: md, attachments: undefined });
   }
@@ -205,6 +217,10 @@ export function ChatView({ providers, onGoToProviders, username }: Props) {
       if (message.type !== 'chatEvent') return;
       const ev = message.event;
       setBlocks((prev) => applyChatEvent(prev, ev));
+      if (ev.kind === 'run-done') {
+        const start = runStartRef.current;
+        if (start && Date.now() - start > CELEBRATE_THRESHOLD_MS) triggerCelebration();
+      }
       if (ev.kind === 'run-done' || ev.kind === 'run-error' || ev.kind === 'run-cancelled') setRunning(false);
     });
     return unsubscribe;
@@ -217,6 +233,7 @@ export function ChatView({ providers, onGoToProviders, username }: Props) {
   function send() {
     const text = input.trim();
     if (!text || !providerId || running) return;
+    runStartRef.current = Date.now();
     setRunning(true);
     setInput('');
     const currentAttachments = attachments;
@@ -266,14 +283,31 @@ export function ChatView({ providers, onGoToProviders, username }: Props) {
   const modelsSource: ModelsSource | undefined = providerId ? { kind: 'saved', providerId } : undefined;
   const activeUsage = conversations.find((c) => c.id === activeId)?.usage;
 
+  if (!providersLoaded) {
+    return (
+      <div className="view">
+        <ViewHeader title="Agente" subtitle="Tu asistente inteligente para desarrollo" />
+        <div className="agent-config">
+          <div className="agent-config-row">
+            <span className="skeleton-bar skeleton-bar-select" />
+            <span className="toolbar-spacer" />
+            <span className="skeleton-bar skeleton-bar-icon" />
+            <span className="skeleton-bar skeleton-bar-icon" />
+          </div>
+          <span className="skeleton-bar skeleton-bar-wide" />
+        </div>
+      </div>
+    );
+  }
+
   if (providers.length === 0) {
     return (
       <div className="view">
         <ViewHeader title="Agente" subtitle="Tu asistente inteligente para desarrollo" />
         <div className="chat-empty">
-          <p>Todavía no configuraste ningún proveedor.</p>
+          <p>Sin un proveedor conectado no tengo con qué pensar.</p>
           <button className="btn-primary" onClick={onGoToProviders}>
-            Ir a Proveedores
+            Conectar un proveedor
           </button>
         </div>
       </div>
@@ -283,6 +317,12 @@ export function ChatView({ providers, onGoToProviders, username }: Props) {
   return (
     <div className="view chat-view">
       <ViewHeader title="Agente" subtitle="Tu asistente inteligente para desarrollo" />
+      {celebrate && (
+        <div className="run-complete-badge" role="status">
+          <IconCheck size={13} />
+          Listo
+        </div>
+      )}
 
       <div className="agent-config">
         <div className="agent-config-row">
@@ -321,7 +361,7 @@ export function ChatView({ providers, onGoToProviders, username }: Props) {
         <HistoryPanel
           items={conversations}
           activeId={activeId}
-          emptyLabel="Todavía no hay conversaciones guardadas."
+          emptyLabel="Ni un chat guardado todavía — el primero va a quedar acá."
           onSelect={(id) => postToExtension({ type: 'openConversation', id })}
           onNew={newConversation}
           onRename={(id, title) => postToExtension({ type: 'renameConversation', id, title })}
@@ -332,9 +372,9 @@ export function ChatView({ providers, onGoToProviders, username }: Props) {
           <div className="chat-log">
             {blocks.length === 0 && (
               <EmptyState
-                icon={<img src={LOGO_URI} alt="" className="empty-state-logo" />}
+                icon={<IconScorpion size={44} animated="idle" />}
                 title={`Hola, ${username}`}
-                subtitle="¿En qué puedo ayudarte hoy?"
+                subtitle="Decime qué construimos hoy."
               />
             )}
             {blocks.map((b, idx) => {

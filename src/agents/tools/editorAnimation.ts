@@ -5,7 +5,12 @@ const addedDecoration = vscode.window.createTextEditorDecorationType({
   backgroundColor: 'rgba(80, 200, 120, 0.18)',
 });
 
-let flashTimer: ReturnType<typeof setTimeout> | undefined;
+// Un timer por archivo (no uno solo compartido): con la revisión en lote,
+// varias animaciones de distintos archivos pueden terminar a los pocos
+// milisegundos una de otra, y un timer único hacía que la del archivo B
+// cancelara la del archivo A antes de que se limpiara sola, dejando el
+// resaltado verde de A pegado para siempre.
+const flashTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 const MAX_ANIMATED_LINES = 400;
 const TARGET_TOTAL_MS = 1200;
@@ -23,7 +28,20 @@ export async function animatedReplaceAll(uri: vscode.Uri, newContent: string, an
   let doc: vscode.TextDocument;
   try {
     doc = await vscode.workspace.openTextDocument(uri);
-  } catch {
+  } catch (openErr) {
+    // openTextDocument puede fallar por motivos distintos a "no existe"
+    // (binario, encoding que VS Code no reconoce, archivo bloqueado). Antes
+    // se asumía siempre "no existe" y se lo vaciaba con fs.writeFile antes
+    // de reintentar — eso truncaba a 0 bytes archivos reales que sí
+    // existían pero no se podían abrir como texto. Ahora confirmamos con
+    // stat() que genuinamente no existe antes de tocar nada.
+    let exists = true;
+    try {
+      await vscode.workspace.fs.stat(uri);
+    } catch {
+      exists = false;
+    }
+    if (exists) throw openErr;
     await vscode.workspace.fs.writeFile(uri, new Uint8Array());
     doc = await vscode.workspace.openTextDocument(uri);
   }
@@ -50,6 +68,8 @@ export async function animatedReplaceRange(uri: vscode.Uri, range: vscode.Range,
   const doc = await vscode.workspace.openTextDocument(uri);
   const editor = await vscode.window.showTextDocument(doc, { preview: true, preserveFocus: true });
   const startOffset = doc.offsetAt(range.start);
+  const removedLength = doc.offsetAt(range.end) - startOffset;
+  const lengthBefore = doc.getText().length;
 
   if (!shouldAnimate(newText, animate)) {
     await editor.edit((eb) => eb.replace(range, newText));
@@ -59,7 +79,14 @@ export async function animatedReplaceRange(uri: vscode.Uri, range: vscode.Range,
   }
   await doc.save();
 
-  const endOffset = startOffset + newText.length;
+  // No usamos startOffset + newText.length directo: en un documento CRLF los
+  // '\n' de newText se normalizan a '\r\n' al insertarse (un carácter más por
+  // línea) — el mismo desfase que typeInto ya corrige más arriba. Medimos el
+  // largo real del documento antes/después para saber cuánto quedó
+  // efectivamente insertado, en vez de confiar en newText.length.
+  const lengthAfter = editor.document.getText().length;
+  const insertedLength = lengthAfter - lengthBefore + removedLength;
+  const endOffset = startOffset + insertedLength;
   flash(editor, new vscode.Range(editor.document.positionAt(startOffset), editor.document.positionAt(endOffset)));
 }
 
@@ -119,9 +146,17 @@ function toChunks(text: string): string[] {
 }
 
 function flash(editor: vscode.TextEditor, range: vscode.Range): void {
+  const key = editor.document.uri.toString();
   editor.setDecorations(addedDecoration, [range]);
-  if (flashTimer) clearTimeout(flashTimer);
-  flashTimer = setTimeout(() => editor.setDecorations(addedDecoration, []), 2000);
+  const existing = flashTimers.get(key);
+  if (existing) clearTimeout(existing);
+  flashTimers.set(
+    key,
+    setTimeout(() => {
+      editor.setDecorations(addedDecoration, []);
+      flashTimers.delete(key);
+    }, 2000),
+  );
 }
 
 function sleep(ms: number): Promise<void> {

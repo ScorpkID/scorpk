@@ -35,11 +35,19 @@ const MAX_TURNS = 12;
 // run_terminal_command/git_commit/etc — esas siguen una por una.
 const BATCHABLE_FILE_TOOLS = new Set(['write_file', 'edit_file', 'delete_file', 'move_file']);
 
-function callPath(call: ToolCall): string | undefined {
+// Todas las rutas que una llamada toca — para move_file son DOS (origen y
+// destino). Antes solo se consideraba `from`, así que un lote podía incluir
+// move_file(from=A, to=B) seguido de un edit_file/delete_file sobre B sin
+// cortar el lote — el diff/checkpoint de esa segunda llamada se calculaba
+// contra el estado de B antes de que el move la creara (stale), porque
+// todo el lote se previsualiza antes de ejecutar cualquiera.
+function callPaths(call: ToolCall): string[] {
   const args = call.arguments;
-  if (typeof args.path === 'string') return args.path;
-  if (typeof args.from === 'string') return args.from; // move_file
-  return undefined;
+  const paths: string[] = [];
+  if (typeof args.path === 'string') paths.push(args.path);
+  if (typeof args.from === 'string') paths.push(args.from);
+  if (typeof args.to === 'string') paths.push(args.to);
+  return paths;
 }
 
 export async function* runAgent(opts: RunAgentOptions): AsyncGenerator<AgentEvent, void, unknown> {
@@ -118,9 +126,9 @@ export async function* runAgent(opts: RunAgentOptions): AsyncGenerator<AgentEven
         const toolDef = tools.find((t) => t.name === call.name);
         const needsApproval = toolDef?.requiresApproval ?? true;
         if (!needsApproval || !BATCHABLE_FILE_TOOLS.has(call.name)) break;
-        const path = callPath(call);
-        if (!path || seenPaths.has(path)) break;
-        seenPaths.add(path);
+        const paths = callPaths(call);
+        if (paths.length === 0 || paths.some((p) => seenPaths.has(p))) break;
+        for (const p of paths) seenPaths.add(p);
         batch.push(call);
         j++;
       }

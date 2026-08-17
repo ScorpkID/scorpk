@@ -24,6 +24,14 @@ interface ConnectedServer {
  */
 export class McpClientManager {
   private readonly connections = new Map<string, ConnectedServer>();
+  // Conexiones en curso: getTools() se llama de nuevo en cada mensaje/turno
+  // (runChat y teamDeps), así que dos corridas casi simultáneas pueden pedir
+  // el mismo servidor antes de que la primera termine de conectar — sin
+  // esto, cada una lanzaba su propio proceso hijo y la segunda pisaba la
+  // referencia de la primera en `connections`, dejándolo huérfano (nunca se
+  // vuelve a cerrar). Cachear la promesa en curso hace que la segunda espere
+  // a la misma conexión en vez de duplicarla.
+  private readonly connecting = new Map<string, Promise<ConnectedServer>>();
 
   constructor(private readonly store: McpServerStore) {}
 
@@ -68,6 +76,19 @@ export class McpClientManager {
     const existing = this.connections.get(server.id);
     if (existing) return existing;
 
+    const inFlight = this.connecting.get(server.id);
+    if (inFlight) return inFlight;
+
+    const promise = this.connect(server);
+    this.connecting.set(server.id, promise);
+    try {
+      return await promise;
+    } finally {
+      this.connecting.delete(server.id);
+    }
+  }
+
+  private async connect(server: McpServerConfig): Promise<ConnectedServer> {
     const transport = new StdioClientTransport({ command: server.command, args: server.args });
     const client = new Client({ name: 'scorpk', version: '1.0.0' });
     await client.connect(transport);

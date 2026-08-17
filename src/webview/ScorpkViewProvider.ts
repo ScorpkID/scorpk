@@ -35,6 +35,7 @@ import { McpServerStore } from '../mcp/mcpServerStore';
 import { PromptTemplateStore } from '../settings/promptTemplateStore';
 import { McpClientManager } from '../mcp/mcpClientManager';
 import { UsageStore } from '../usage/usageStore';
+import { estimateCostUsd } from '../providers/modelPricing';
 
 const SYSTEM_PROMPT = `Eres Scorpk, un agente de programación con acceso real al workspace del usuario en Visual Studio Code.
 Usa las herramientas disponibles (read_file, list_dir, write_file, edit_file, delete_file, move_file,
@@ -540,11 +541,12 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
   }
 
   private sendConversations(): void {
-    this.postMessage({
-      type: 'conversations',
-      conversations: this.conversationStore.list(),
-      activeId: this.activeConversationId,
+    const conversations = this.conversationStore.list().map((c) => {
+      if (!c.usage) return c;
+      const providerKind = this.providerStore.get(c.providerId)?.kind;
+      return { ...c, usage: { ...c.usage, costUsd: estimateCostUsd(c.model, c.usage.inputTokens, c.usage.outputTokens, providerKind) } };
     });
+    this.postMessage({ type: 'conversations', conversations, activeId: this.activeConversationId });
   }
 
   private async openConversation(id: string): Promise<void> {
@@ -714,7 +716,8 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
     } else if (ev.kind === 'agent-usage') {
       const agent = this.teamStore.get(ev.agentId);
       if (agent?.providerId) {
-        await this.usageStore.recordUsage(agent.providerId, agent.model, ev.inputTokens, ev.outputTokens);
+        const providerKind = this.providerStore.get(agent.providerId)?.kind;
+        await this.usageStore.recordUsage(agent.providerId, agent.model, ev.inputTokens, ev.outputTokens, providerKind);
         await this.sendUsageState();
       }
     }
@@ -883,7 +886,7 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
           this.postMessage({ type: 'chatEvent', event: { kind: 'tool-rejected', callId: ev.callId, reason: ev.reason } });
           await this.persistActiveConversation(providerId, model);
         } else if (ev.type === 'usage') {
-          await this.usageStore.recordUsage(providerId, model, ev.inputTokens, ev.outputTokens);
+          await this.usageStore.recordUsage(providerId, model, ev.inputTokens, ev.outputTokens, provider.kind);
           await this.conversationStore.addUsage(this.activeConversationId!, ev.inputTokens, ev.outputTokens);
           await this.sendUsageState();
           this.sendConversations();

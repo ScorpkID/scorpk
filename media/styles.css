@@ -1700,7 +1700,16 @@ label {
 /* ============================================================
    Static views (Ajustes / Ayuda)
    ============================================================ */
+.static-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
 .static-view-body {
+  flex: 1;
+  min-height: 0;
   padding: 0 var(--space-4) var(--space-4);
   overflow-y: auto;
   display: flex;

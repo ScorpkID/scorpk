@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 import { randomUUID } from 'crypto';
 import { ChatMessage } from '../agents/types';
 import { ConversationSummary } from '../shared/protocol';
-import { estimateCostUsd } from '../providers/modelPricing';
 
 interface StoredUsage {
   inputTokens: number;
@@ -44,13 +43,10 @@ export class ConversationStore {
         providerId: c.providerId,
         model: c.model,
         updatedAt: c.updatedAt,
-        usage: c.usage
-          ? {
-              inputTokens: c.usage.inputTokens,
-              outputTokens: c.usage.outputTokens,
-              costUsd: estimateCostUsd(c.model, c.usage.inputTokens, c.usage.outputTokens),
-            }
-          : undefined,
+        // costUsd se completa después en ScorpkViewProvider.sendConversations,
+        // que sí conoce el `kind` del proveedor (acá solo tenemos el id) — hace
+        // falta para no calcular costo en modelos de suscripción como Copilot.
+        usage: c.usage ? { inputTokens: c.usage.inputTokens, outputTokens: c.usage.outputTokens } : undefined,
       }))
       .sort((a, b) => b.updatedAt - a.updatedAt);
   }

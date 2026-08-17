@@ -28,11 +28,15 @@ export class VscodeLmClient implements LLMClient {
       else params.signal.addEventListener('abort', onAbort, { once: true });
     }
 
+    let outputText = '';
     try {
       const response = await model.sendRequest(messages, { tools }, cts.token);
       for await (const part of response.stream) {
         if (part instanceof vscode.LanguageModelTextPart) {
-          if (part.value) yield { type: 'text-delta', textDelta: part.value };
+          if (part.value) {
+            outputText += part.value;
+            yield { type: 'text-delta', textDelta: part.value };
+          }
         } else if (part instanceof vscode.LanguageModelToolCallPart) {
           yield { type: 'tool-call', id: part.callId, name: part.name, arguments: part.input as Record<string, unknown> };
         }
@@ -40,6 +44,20 @@ export class VscodeLmClient implements LLMClient {
     } finally {
       if (params.signal) params.signal.removeEventListener('abort', onAbort);
       cts.dispose();
+    }
+
+    // La API vscode.lm no expone el consumo real de una request, pero sí
+    // countTokens (con el tokenizador del propio modelo) — lo usamos para no
+    // dejar el contador de uso siempre en cero con Copilot.
+    try {
+      const inputText = [params.system, ...params.messages.map((m) => m.content)].filter(Boolean).join('\n');
+      const [inputTokens, outputTokens] = await Promise.all([
+        model.countTokens(inputText),
+        outputText ? model.countTokens(outputText) : Promise.resolve(0),
+      ]);
+      yield { type: 'usage', inputTokens, outputTokens };
+    } catch {
+      // No crítico — si countTokens falla, seguimos sin usage para este turno.
     }
 
     yield { type: 'done' };

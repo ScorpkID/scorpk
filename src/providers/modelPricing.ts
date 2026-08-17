@@ -35,8 +35,17 @@ const PRICING_TABLE: PricingEntry[] = [
 ];
 
 /** undefined si no hay un precio de referencia conocido para ese modelo — la UI
- * debe mostrar solo tokens en ese caso, sin inventar un costo. */
-export function estimateCostUsd(model: string, inputTokens: number, outputTokens: number): number | undefined {
+ * debe mostrar solo tokens en ese caso, sin inventar un costo. También undefined
+ * para 'vscode-copilot': es una suscripción, no se paga por token, así que un
+ * "$" ahí sería directamente falso aunque el nombre del modelo (p.ej. "gpt-4o")
+ * matchee la tabla de precios de la API paga real. */
+export function estimateCostUsd(
+  model: string,
+  inputTokens: number,
+  outputTokens: number,
+  providerKind?: string,
+): number | undefined {
+  if (providerKind === 'vscode-copilot') return undefined;
   const normalized = model.toLowerCase();
   const entry = PRICING_TABLE.find((e) => normalized.includes(e.match));
   if (!entry) return undefined;

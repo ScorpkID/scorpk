@@ -39,6 +39,7 @@ export class OpenAICompatibleClient implements LLMClient {
     const toolCalls = new Map<number, OpenAIToolCallAccumulator>();
     const decoder = new TextDecoder();
     let buffer = '';
+    let outputText = '';
     let usage: { inputTokens: number; outputTokens: number } | undefined;
 
     for await (const chunk of response.body as unknown as AsyncIterable<Uint8Array>) {
@@ -67,6 +68,7 @@ export class OpenAICompatibleClient implements LLMClient {
         if (!delta) continue;
 
         if (typeof delta.content === 'string' && delta.content.length > 0) {
+          outputText += delta.content;
           yield { type: 'text-delta', textDelta: delta.content };
         }
 
@@ -93,8 +95,15 @@ export class OpenAICompatibleClient implements LLMClient {
       yield { type: 'tool-call', id: call.id || `call_${call.name}`, name: call.name, arguments: args };
     }
 
+    // Varios proveedores OpenAI-compatible ignoran stream_options.include_usage
+    // y nunca mandan el campo `usage` — sin este fallback el contador de
+    // tokens quedaba siempre en cero para esos casos. Es una estimación
+    // aproximada (caracteres / 4), no un conteo real de tokens.
     if (usage) {
       yield { type: 'usage', inputTokens: usage.inputTokens, outputTokens: usage.outputTokens };
+    } else {
+      const inputChars = JSON.stringify(body.messages).length;
+      yield { type: 'usage', inputTokens: estimateTokensFromChars(inputChars), outputTokens: estimateTokensFromChars(outputText.length) };
     }
 
     yield { type: 'done' };
@@ -137,6 +146,10 @@ function toOpenAITool(tool: ToolDef) {
 
 function joinUrl(base: string, path: string): string {
   return base.replace(/\/+$/, '') + path;
+}
+
+function estimateTokensFromChars(chars: number): number {
+  return Math.max(0, Math.round(chars / 4));
 }
 
 async function safeReadText(response: Response): Promise<string> {

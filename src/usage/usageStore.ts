@@ -32,11 +32,17 @@ export class UsageStore {
   /** costUsd acumula solo la porción de llamadas donde se conoce el precio
    * del modelo — si nunca se conoció el precio, queda en 0 aunque haya
    * tokens registrados (la UI debe tratarlo como "sin dato", no como gratis). */
-  async recordUsage(providerId: string, model: string, inputTokens: number, outputTokens: number): Promise<void> {
+  async recordUsage(
+    providerId: string,
+    model: string,
+    inputTokens: number,
+    outputTokens: number,
+    providerKind?: string,
+  ): Promise<void> {
     if (inputTokens <= 0 && outputTokens <= 0) return;
     const data = this.all();
     const current = data[providerId] ?? { inputTokens: 0, outputTokens: 0, costUsd: 0 };
-    const cost = estimateCostUsd(model, inputTokens, outputTokens) ?? 0;
+    const cost = estimateCostUsd(model, inputTokens, outputTokens, providerKind) ?? 0;
     data[providerId] = {
       inputTokens: current.inputTokens + inputTokens,
       outputTokens: current.outputTokens + outputTokens,

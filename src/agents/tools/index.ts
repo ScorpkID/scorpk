@@ -18,6 +18,7 @@ import {
   setLiveEditorPreviewEnabled,
 } from './fileTools';
 import { runTerminalCommandTool, runTerminalCommandHandler } from './terminalTools';
+import { runTestsTool, runTestsHandler, TEST_GUIDANCE } from './testTools';
 import {
   gitStatusTool,
   gitStatusHandler,
@@ -59,6 +60,7 @@ export const allTools: ToolDef[] = [
   fetchUrlTool,
   useSkillTool,
   runTerminalCommandTool,
+  runTestsTool,
   gitStatusTool,
   gitDiffTool,
   gitAddTool,
@@ -69,7 +71,7 @@ export const allTools: ToolDef[] = [
   askUserTool,
 ];
 
-export { buildToolCallDiff, computeFileChange, FileChange, setLiveEditorPreviewEnabled, buildGenerateCommitMessageHandler };
+export { buildToolCallDiff, computeFileChange, FileChange, setLiveEditorPreviewEnabled, buildGenerateCommitMessageHandler, TEST_GUIDANCE };
 
 export const toolHandlers: Record<string, ToolHandler> = {
   read_file: readFileHandler,
@@ -85,6 +87,7 @@ export const toolHandlers: Record<string, ToolHandler> = {
   fetch_url: fetchUrlHandler,
   use_skill: useSkillHandler,
   run_terminal_command: runTerminalCommandHandler,
+  run_tests: runTestsHandler,
   git_status: gitStatusHandler,
   git_diff: gitDiffHandler,
   git_add: gitAddHandler,

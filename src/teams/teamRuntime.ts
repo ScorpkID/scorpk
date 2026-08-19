@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto';
 import { AgentDefinition, PermissionMode, TeamStreamEvent } from '../shared/protocol';
 import { LLMClient } from '../providers/llmClient';
 import { ChatMessage, ToolDef } from '../agents/types';
-import { ToolHandler, buildGenerateCommitMessageHandler } from '../agents/tools';
+import { ToolHandler, buildGenerateCommitMessageHandler, TEST_GUIDANCE } from '../agents/tools';
 import { runAgent, ApprovalResult } from '../agents/agentRuntime';
 import { permissionModeSystemSuffix } from '../agents/permissionMode';
 import { withProjectInstructions } from '../agents/projectInstructions';
@@ -125,6 +125,7 @@ async function* runAgentTurn(
     model,
     system:
       withSkillsPrompt(withProjectInstructions(agent.systemPrompt, deps.projectInstructions), deps.skills ?? []) +
+      `\n\n${TEST_GUIDANCE}` +
       permissionModeSystemSuffix(deps.mode),
     history,
     tools: deps.tools,

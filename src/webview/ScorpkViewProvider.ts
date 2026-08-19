@@ -15,7 +15,9 @@ import {
   AuthUser,
   AttachmentRef,
   UsageTotals,
+  CheckpointFileDiff,
 } from '../shared/protocol';
+import { diffLines } from 'diff';
 import { ChatMessage } from '../agents/types';
 import {
   allTools,
@@ -25,6 +27,7 @@ import {
   setLiveEditorPreviewEnabled,
   buildGenerateCommitMessageHandler,
   TEST_GUIDANCE,
+  resolveInWorkspace,
 } from '../agents/tools';
 import { runAgent, ApprovalResult } from '../agents/agentRuntime';
 import { resolveApproval, permissionModeSystemSuffix } from '../agents/permissionMode';
@@ -474,6 +477,16 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
       case 'openSkill':
         await vscode.window.showTextDocument(vscode.Uri.file(message.path));
         break;
+      case 'listCheckpoints':
+        this.postMessage({
+          type: 'checkpoints',
+          conversationId: message.conversationId,
+          checkpoints: this.checkpointStore.listCheckpoints(message.conversationId),
+        });
+        break;
+      case 'previewCheckpointRevert':
+        await this.previewCheckpointRevert(message.conversationId, message.messageId);
+        break;
     }
   }
 
@@ -483,6 +496,32 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
 
   private async sendSkills(): Promise<void> {
     this.postMessage({ type: 'skills', skills: await listSkills() });
+  }
+
+  /** Arma un diff resumido (contenido guardado en el checkpoint vs. el
+   * archivo tal como está ahora) para cada archivo que tocó ese mensaje, sin
+   * revertir nada todavía — la UI lo muestra antes de que el usuario
+   * confirme. */
+  private async previewCheckpointRevert(conversationId: string, messageId: string): Promise<void> {
+    const files = this.checkpointStore.getCheckpoint(conversationId, messageId);
+    const result: CheckpointFileDiff[] = [];
+    for (const [relPath, before] of Object.entries(files ?? {})) {
+      let current: string | undefined;
+      try {
+        const bytes = await vscode.workspace.fs.readFile(resolveInWorkspace(relPath));
+        current = Buffer.from(bytes).toString('utf8');
+      } catch {
+        current = undefined;
+      }
+      const willDelete = before === null;
+      const willCreate = current === undefined && before !== null;
+      const parts = diffLines(current ?? '', before ?? '');
+      const diff = parts
+        .map((p) => p.value.replace(/\n$/, '').split('\n').map((line) => (p.added ? '+ ' : p.removed ? '- ' : '  ') + line).join('\n'))
+        .join('\n');
+      result.push({ path: relPath, diff, willDelete, willCreate });
+    }
+    this.postMessage({ type: 'checkpointRevertPreview', conversationId, messageId, files: result });
   }
 
   private async sendUsageState(): Promise<void> {
@@ -923,7 +962,7 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
             type: 'chatEvent',
             event: { kind: 'tool-result', callId: ev.callId, result: ev.result, isError: ev.isError },
           });
-          await this.applyFileChangeSideEffects(ev.callId, ev.isError, this.activeConversationId!, userMsgId);
+          await this.applyFileChangeSideEffects(ev.callId, ev.isError, this.activeConversationId!, userMsgId, text);
           await this.persistActiveConversation(providerId, model);
         } else if (ev.type === 'tool-rejected') {
           this.pendingFileChanges.delete(ev.callId);
@@ -1047,6 +1086,7 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
     isError: boolean,
     conversationId: string,
     userMsgId: string,
+    messageSummary: string,
   ): Promise<void> {
     const change = this.pendingFileChanges.get(callId);
     this.pendingFileChanges.delete(callId);
@@ -1055,8 +1095,8 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
     if (change.kind === 'move' && change.movedFrom) {
       // El origen tenía contenido antes (revertir = volver a escribirlo ahí) y
       // el destino no existía (revertir = borrarlo).
-      await this.checkpointStore.captureIfAbsent(conversationId, userMsgId, change.movedFrom, change.before);
-      await this.checkpointStore.captureIfAbsent(conversationId, userMsgId, change.path, null);
+      await this.checkpointStore.captureIfAbsent(conversationId, userMsgId, change.movedFrom, change.before, messageSummary);
+      await this.checkpointStore.captureIfAbsent(conversationId, userMsgId, change.path, null, messageSummary);
       return;
     }
 
@@ -1065,6 +1105,7 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
       userMsgId,
       change.path,
       change.existedBefore ? change.before : null,
+      messageSummary,
     );
   }
 

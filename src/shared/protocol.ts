@@ -129,6 +129,20 @@ export interface PromptTemplate {
 
 export type NewPromptTemplateInput = Omit<PromptTemplate, 'id'>;
 
+export interface CheckpointSummary {
+  messageId: string;
+  timestamp: number;
+  summary: string;
+  fileCount: number;
+}
+
+export interface CheckpointFileDiff {
+  path: string;
+  diff: string;
+  willDelete: boolean;
+  willCreate: boolean;
+}
+
 export interface SkillSummary {
   name: string;
   description: string;
@@ -208,7 +222,9 @@ export type WebviewToExtensionMessage =
   | { type: 'removePromptTemplate'; id: string }
   | { type: 'listSkills' }
   | { type: 'createSkill'; name: string; scope: 'project' | 'personal' }
-  | { type: 'openSkill'; path: string };
+  | { type: 'openSkill'; path: string }
+  | { type: 'listCheckpoints'; conversationId: string }
+  | { type: 'previewCheckpointRevert'; conversationId: string; messageId: string };
 
 export type ExtensionToWebviewMessage =
   | { type: 'providers'; providers: ProviderConfig[] }
@@ -239,4 +255,6 @@ export type ExtensionToWebviewMessage =
   | { type: 'runFromEditor'; text: string }
   | { type: 'usageState'; totals: Record<string, UsageTotals & { providerName: string }> }
   | { type: 'promptTemplates'; templates: PromptTemplate[] }
-  | { type: 'skills'; skills: SkillSummary[] };
+  | { type: 'skills'; skills: SkillSummary[] }
+  | { type: 'checkpoints'; conversationId: string; checkpoints: CheckpointSummary[] }
+  | { type: 'checkpointRevertPreview'; conversationId: string; messageId: string; files: CheckpointFileDiff[] };

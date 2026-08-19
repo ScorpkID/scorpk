@@ -7,6 +7,7 @@ import { MarkdownMessage } from './MarkdownMessage';
 import { ModeSelector } from './ModeSelector';
 import { ModelPicker } from './ModelPicker';
 import { HistoryPanel } from './HistoryPanel';
+import { CheckpointTimeline } from './CheckpointTimeline';
 import { ViewHeader } from './ViewHeader';
 import { EmptyState } from './EmptyState';
 import { Composer } from './Composer';
@@ -127,6 +128,7 @@ export function ChatView({ providers, providersLoaded, onGoToProviders, username
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [running, setRunning] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [showCheckpoints, setShowCheckpoints] = useState(false);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [celebrate, setCelebrate] = useState(false);
@@ -261,10 +263,16 @@ export function ChatView({ providers, providersLoaded, onGoToProviders, username
   function toggleHistory() {
     const next = !showHistory;
     setShowHistory(next);
+    setShowCheckpoints(false);
     // Siempre refrescamos al abrir, en vez de confiar en que la lista que
     // llegó por push en algún momento anterior siga al día — evita que una
     // conversación en curso "no aparezca" si ese push se perdió.
     if (next) postToExtension({ type: 'listConversations' });
+  }
+
+  function toggleCheckpoints() {
+    setShowCheckpoints((v) => !v);
+    setShowHistory(false);
   }
 
   async function handleModeChange(next: PermissionMode) {
@@ -346,6 +354,9 @@ export function ChatView({ providers, providersLoaded, onGoToProviders, username
           <button className="btn-icon" onClick={toggleHistory} title="Historial de conversaciones">
             {showHistory ? <IconX size={15} /> : <IconClock size={15} />}
           </button>
+          <button className="btn-icon" onClick={toggleCheckpoints} title="Checkpoints de esta conversación">
+            {showCheckpoints ? <IconX size={15} /> : <IconRefresh size={15} />}
+          </button>
         </div>
         <ModelPicker
           key={providerId}
@@ -367,6 +378,8 @@ export function ChatView({ providers, providersLoaded, onGoToProviders, username
           onRename={(id, title) => postToExtension({ type: 'renameConversation', id, title })}
           onDelete={(id) => postToExtension({ type: 'deleteConversation', id })}
         />
+      ) : showCheckpoints ? (
+        <CheckpointTimeline conversationId={activeId} />
       ) : (
         <>
           <div className="chat-log">

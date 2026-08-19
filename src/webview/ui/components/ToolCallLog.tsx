@@ -155,7 +155,7 @@ export function ToolCallLog({ block }: { block: ToolBlock }) {
 
 const DIFF_COLLAPSE_LINES = 24;
 
-function DiffView({ diff }: { diff: string }) {
+export function DiffView({ diff }: { diff: string }) {
   const [expanded, setExpanded] = useState(false);
   const allLines = diff.split('\n');
   const isLong = allLines.length > DIFF_COLLAPSE_LINES;

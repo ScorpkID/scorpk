@@ -78,7 +78,7 @@ export function HistoryPanel({ items, activeId, emptyLabel, newLabel, onSelect, 
   );
 }
 
-function relativeDate(ts: number): string {
+export function relativeDate(ts: number): string {
   const diffMs = Date.now() - ts;
   const minutes = Math.floor(diffMs / 60000);
   if (minutes < 1) return 'ahora';

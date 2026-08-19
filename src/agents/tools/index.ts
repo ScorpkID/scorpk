@@ -16,6 +16,7 @@ import {
   computeFileChange,
   FileChange,
   setLiveEditorPreviewEnabled,
+  resolveInWorkspace,
 } from './fileTools';
 import { runTerminalCommandTool, runTerminalCommandHandler } from './terminalTools';
 import { runTestsTool, runTestsHandler, TEST_GUIDANCE } from './testTools';
@@ -71,7 +72,15 @@ export const allTools: ToolDef[] = [
   askUserTool,
 ];
 
-export { buildToolCallDiff, computeFileChange, FileChange, setLiveEditorPreviewEnabled, buildGenerateCommitMessageHandler, TEST_GUIDANCE };
+export {
+  buildToolCallDiff,
+  computeFileChange,
+  FileChange,
+  setLiveEditorPreviewEnabled,
+  buildGenerateCommitMessageHandler,
+  TEST_GUIDANCE,
+  resolveInWorkspace,
+};
 
 export const toolHandlers: Record<string, ToolHandler> = {
   read_file: readFileHandler,

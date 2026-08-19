@@ -31,6 +31,17 @@ const DEFAULT_TEMPLATES: Array<Omit<PromptTemplate, 'id'>> = [
       'manejo de secretos, etc.) y proponé correcciones.',
     attachActiveFile: true,
   },
+  {
+    trigger: 'init',
+    label: '/init',
+    expansion:
+      'Explorá la estructura de este proyecto (list_dir y read_file de los archivos de configuración principales — ' +
+      'package.json, tsconfig, etc.) y creá un archivo SCORPK.md en la raíz con instrucciones específicas para ' +
+      'trabajar acá: stack y arquitectura, convenciones de código, cómo correr build/tests/lint, y cualquier otro ' +
+      'detalle que un agente necesite para no tener que redescubrirlo cada vez. Si SCORPK.md ya existe, leelo ' +
+      'primero y proponé mejoras puntuales en vez de sobreescribirlo entero.',
+    attachActiveFile: false,
+  },
 ];
 
 /** Comandos rápidos configurables (`/test`, `/explicar`, ...) que expanden a
@@ -41,10 +52,20 @@ export class PromptTemplateStore {
 
   list(): PromptTemplate[] {
     const stored = this.context.globalState.get<PromptTemplate[]>(STORE_KEY);
-    if (stored) return stored;
-    const seeded = DEFAULT_TEMPLATES.map((t) => ({ ...t, id: randomUUID() }));
-    void this.context.globalState.update(STORE_KEY, seeded);
-    return seeded;
+    if (!stored) {
+      const seeded = DEFAULT_TEMPLATES.map((t) => ({ ...t, id: randomUUID() }));
+      void this.context.globalState.update(STORE_KEY, seeded);
+      return seeded;
+    }
+    // Instalaciones existentes ya sembraron su lista una sola vez — si se
+    // suma un comando nuevo a DEFAULT_TEMPLATES más adelante (como /init),
+    // esto lo agrega también ahí en vez de dejarlo solo para instalaciones
+    // nuevas. Nunca toca ni pisa los triggers que el usuario ya tiene.
+    const missing = DEFAULT_TEMPLATES.filter((d) => !stored.some((s) => s.trigger === d.trigger));
+    if (missing.length === 0) return stored;
+    const merged = [...stored, ...missing.map((t) => ({ ...t, id: randomUUID() }))];
+    void this.context.globalState.update(STORE_KEY, merged);
+    return merged;
   }
 
   private async save(templates: PromptTemplate[]): Promise<void> {

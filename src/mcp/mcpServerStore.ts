@@ -1,22 +1,21 @@
 import * as vscode from 'vscode';
 import { randomUUID } from 'crypto';
+import { McpServerConfig } from '../shared/protocol';
 
-export interface McpServerConfig {
-  id: string;
-  name: string;
-  command: string;
-  args: string[];
-  enabled: boolean;
-}
+export type { McpServerConfig };
 
 const STORE_KEY = 'scorpk.mcpServers';
 
-/** Servidores MCP configurados por el usuario (v1: solo stdio — comando local). */
+/** Servidores MCP configurados por el usuario — stdio (comando local), o
+ * http/sse (URL remota). */
 export class McpServerStore {
   constructor(private readonly context: vscode.ExtensionContext) {}
 
   list(): McpServerConfig[] {
-    return this.context.globalState.get<McpServerConfig[]>(STORE_KEY, []);
+    const raw = this.context.globalState.get<McpServerConfig[]>(STORE_KEY, []);
+    // Servidores guardados antes de que existiera `kind` no lo tienen —
+    // todos los que había hasta ahora eran stdio.
+    return raw.map((s) => (s.kind ? s : { ...s, kind: 'stdio' as const }));
   }
 
   get(id: string): McpServerConfig | undefined {

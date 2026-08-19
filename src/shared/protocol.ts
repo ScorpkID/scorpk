@@ -102,12 +102,19 @@ export interface AttachmentRef {
   path: string;
 }
 
+export type McpTransportKind = 'stdio' | 'http' | 'sse';
+
 export interface McpServerConfig {
   id: string;
   name: string;
-  command: string;
-  args: string[];
+  kind: McpTransportKind;
   enabled: boolean;
+  /** stdio */
+  command?: string;
+  args?: string[];
+  /** http / sse */
+  url?: string;
+  headers?: Record<string, string>;
 }
 
 export type NewMcpServerInput = Omit<McpServerConfig, 'id'>;

@@ -1,5 +1,8 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import { McpServerConfig, McpServerStore } from './mcpServerStore';
 import { ToolDef, ToolParameterSchema } from '../agents/types';
 import { ToolHandler } from '../agents/tools';
@@ -88,8 +91,25 @@ export class McpClientManager {
     }
   }
 
+  private buildTransport(server: McpServerConfig): Transport {
+    if (server.kind === 'http') {
+      if (!server.url) throw new Error(`Servidor MCP "${server.name}": falta la URL.`);
+      return new StreamableHTTPClientTransport(new URL(server.url), {
+        requestInit: server.headers ? { headers: server.headers } : undefined,
+      });
+    }
+    if (server.kind === 'sse') {
+      if (!server.url) throw new Error(`Servidor MCP "${server.name}": falta la URL.`);
+      return new SSEClientTransport(new URL(server.url), {
+        requestInit: server.headers ? { headers: server.headers } : undefined,
+      });
+    }
+    if (!server.command) throw new Error(`Servidor MCP "${server.name}": falta el comando.`);
+    return new StdioClientTransport({ command: server.command, args: server.args ?? [] });
+  }
+
   private async connect(server: McpServerConfig): Promise<ConnectedServer> {
-    const transport = new StdioClientTransport({ command: server.command, args: server.args });
+    const transport = this.buildTransport(server);
     const client = new Client({ name: 'scorpk', version: '1.0.0' });
     await client.connect(transport);
     const { tools } = await client.listTools();

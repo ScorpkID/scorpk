@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto';
 import { AgentDefinition, PermissionMode, TeamStreamEvent } from '../shared/protocol';
 import { LLMClient } from '../providers/llmClient';
 import { ChatMessage, ToolDef } from '../agents/types';
-import { ToolHandler } from '../agents/tools';
+import { ToolHandler, buildGenerateCommitMessageHandler } from '../agents/tools';
 import { runAgent, ApprovalResult } from '../agents/agentRuntime';
 import { permissionModeSystemSuffix } from '../agents/permissionMode';
 import { withProjectInstructions } from '../agents/projectInstructions';
@@ -128,7 +128,11 @@ async function* runAgentTurn(
       permissionModeSystemSuffix(deps.mode),
     history,
     tools: deps.tools,
-    toolHandlers: deps.toolHandlers,
+    // El client/model de acá son los de ESTE agente puntual (cada agente del
+    // equipo puede tener un proveedor distinto) — por eso este override no
+    // puede armarse una sola vez en teamDeps() para todo el run, tiene que
+    // resolverse recién acá.
+    toolHandlers: { ...deps.toolHandlers, generate_commit_message: buildGenerateCommitMessageHandler(client, model) },
     requestApproval: (call) => deps.requestApproval(agent.id, call),
     askUser: (callId, question, options) => deps.askUser(agent.id, callId, question, options),
     signal: deps.signal,

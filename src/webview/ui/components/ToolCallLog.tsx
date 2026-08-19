@@ -49,6 +49,9 @@ const TOOL_ICONS: Record<string, (size: number) => JSX.Element> = {
   git_diff: (s) => <IconGitBranch size={s} />,
   git_add: (s) => <IconGitBranch size={s} />,
   git_commit: (s) => <IconGitBranch size={s} />,
+  git_branch: (s) => <IconGitBranch size={s} />,
+  git_stash: (s) => <IconGitBranch size={s} />,
+  generate_commit_message: (s) => <IconGitBranch size={s} />,
 };
 
 const TOOL_LABELS: Record<string, string> = {
@@ -69,6 +72,9 @@ const TOOL_LABELS: Record<string, string> = {
   git_diff: 'Git diff',
   git_add: 'Git add',
   git_commit: 'Git commit',
+  git_branch: 'Git branch',
+  git_stash: 'Git stash',
+  generate_commit_message: 'Sugerir mensaje',
 };
 
 const COLLAPSE_THRESHOLD = 400;

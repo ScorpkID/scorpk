@@ -17,7 +17,14 @@ import {
   UsageTotals,
 } from '../shared/protocol';
 import { ChatMessage } from '../agents/types';
-import { allTools, toolHandlers, computeFileChange, FileChange, setLiveEditorPreviewEnabled } from '../agents/tools';
+import {
+  allTools,
+  toolHandlers,
+  computeFileChange,
+  FileChange,
+  setLiveEditorPreviewEnabled,
+  buildGenerateCommitMessageHandler,
+} from '../agents/tools';
 import { runAgent, ApprovalResult } from '../agents/agentRuntime';
 import { resolveApproval, permissionModeSystemSuffix } from '../agents/permissionMode';
 import { historyToReplayEvents, userMessageId } from '../agents/historyReplay';
@@ -40,8 +47,11 @@ import { estimateCostUsd } from '../providers/modelPricing';
 
 const SYSTEM_PROMPT = `Eres Scorpk, un agente de programación con acceso real al workspace del usuario en Visual Studio Code.
 Usa las herramientas disponibles (read_file, list_dir, write_file, edit_file, delete_file, move_file,
-search_files, get_diagnostics, run_terminal_command, git_status, git_diff, git_add, git_commit) para leer,
-escribir y ejecutar cosas en el proyecto cuando lo necesites, en vez de asumir contenido que no has visto.
+search_files, get_diagnostics, run_terminal_command, git_status, git_diff, git_add, git_commit, git_branch,
+git_stash, generate_commit_message) para leer, escribir y ejecutar cosas en el proyecto cuando lo necesites,
+en vez de asumir contenido que no has visto.
+Si vas a comitear y el usuario no te dio un mensaje concreto, usá generate_commit_message para proponer uno
+(estilo Conventional Commits) antes de llamar a git_commit — no inventes un mensaje genérico vos mismo.
 Para modificar un archivo que ya existe, preferí siempre edit_file (reemplazo puntual de una porción) en vez de
 reescribirlo entero con write_file — reservá write_file para archivos nuevos o cuando el pedido es realmente una
 reescritura completa. Si old_string no matchea de forma única, agregá más líneas de contexto y reintentá en vez
@@ -874,7 +884,11 @@ export class ScorpkViewProvider implements vscode.WebviewViewProvider {
           permissionModeSystemSuffix(mode),
         history: this.history,
         tools: [...allTools, ...mcp.toolDefs],
-        toolHandlers: { ...toolHandlers, ...mcp.handlers },
+        toolHandlers: {
+          ...toolHandlers,
+          ...mcp.handlers,
+          generate_commit_message: buildGenerateCommitMessageHandler(client, model),
+        },
         requestApproval: (call): Promise<ApprovalResult> =>
           resolveApproval(mode, call.name, () => this.requestApproval(call.id, controller.signal)),
         askUser: (callId) => this.askUser(callId, controller.signal),

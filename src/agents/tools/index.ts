@@ -27,6 +27,12 @@ import {
   gitAddHandler,
   gitCommitTool,
   gitCommitHandler,
+  gitBranchTool,
+  gitBranchHandler,
+  gitStashTool,
+  gitStashHandler,
+  generateCommitMessageTool,
+  buildGenerateCommitMessageHandler,
 } from './gitTools';
 import { searchFilesTool, searchFilesHandler } from './searchTools';
 import { getDiagnosticsTool, getDiagnosticsHandler } from './diagnosticsTools';
@@ -57,10 +63,13 @@ export const allTools: ToolDef[] = [
   gitDiffTool,
   gitAddTool,
   gitCommitTool,
+  gitBranchTool,
+  gitStashTool,
+  generateCommitMessageTool,
   askUserTool,
 ];
 
-export { buildToolCallDiff, computeFileChange, FileChange, setLiveEditorPreviewEnabled };
+export { buildToolCallDiff, computeFileChange, FileChange, setLiveEditorPreviewEnabled, buildGenerateCommitMessageHandler };
 
 export const toolHandlers: Record<string, ToolHandler> = {
   read_file: readFileHandler,
@@ -80,4 +89,6 @@ export const toolHandlers: Record<string, ToolHandler> = {
   git_diff: gitDiffHandler,
   git_add: gitAddHandler,
   git_commit: gitCommitHandler,
+  git_branch: gitBranchHandler,
+  git_stash: gitStashHandler,
 };

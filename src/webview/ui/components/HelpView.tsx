@@ -46,7 +46,8 @@ export function HelpView() {
           <p className="muted">
             Creá un archivo <code>SCORPK.md</code> en la raíz de tu proyecto con convenciones de código, cosas que no
             tocar, cómo correr los tests, etc. — Scorpk lo lee solo y se lo suma automáticamente a todos los agentes,
-            sin que tengas que repetirlo en cada chat.
+            sin que tengas que repetirlo en cada chat. Escribí <code>/init</code> en el chat para que el agente lo
+            genere solo, explorando el proyecto primero.
           </p>
         </section>
 
